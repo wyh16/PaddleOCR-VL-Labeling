@@ -4,6 +4,69 @@
 用途：统一 PP-DocLayoutV3、PaddleOCR-VL-1.5-0.9B、结构化后处理与 K12 试卷结构化层的职责边界，并确定本次任务的大致流程。  
 本版重点修正：**补充“若微调 PP-DocLayoutV3 标注 question_block / option_block 等 K12 专用区域，后续结构化层是否仍然需要”的判断；同时继续明确 PP-DocLayoutV3 的输出不仅用于最终后处理，也会作为 PaddleOCR-VL-1.5-0.9B 的输入构造依据**。
 
+## 目录
+
+- 0. 本版关键结论
+- 1. 术语统一
+- 2. PaddleOCR-VL-1.5 的整体数据流
+- 3. PP-DocLayoutV3 的职责、输入与输出
+  - 3.1 职责
+  - 3.2 输入
+  - 3.3 输出：layout primitive
+  - 3.4 PP-DocLayoutV3 输出的两条流向
+- 4. Region Builder / Cropper：PP-DocLayoutV3 与 0.9B VLM 的桥接层
+  - 4.1 职责
+  - 4.2 输入
+  - 4.3 输出：给 0.9B VLM 的区域级输入
+  - 4.4 任务映射示例
+- 5. PaddleOCR-VL-1.5-0.9B 的职责、输入与输出
+  - 5.1 职责
+  - 5.2 输入：需要区分 document parsing 模式与 standalone 模式
+  - 5.3 输出
+  - 5.4 Document parsing 模式下的区域级识别结果
+  - 5.5 对 K12 的意义
+- 6. 官方结构化输出：res.json、res.img、markdown、prunedResult
+  - 6.1 Python API 输出
+  - 6.2 res.json 的核心字段
+  - 6.3 res.img
+  - 6.4 markdown
+  - 6.5 服务化接口中的 prunedResult
+- 7. 我们是否需要 0.9B VLM 的原始输出？
+  - 7.1 使用 VLM 原始解码输出的优点
+  - 7.2 使用 VLM 原始解码输出的缺点
+  - 7.3 不使用 VLM 原始输出，仅使用 res.json 的优点
+  - 7.4 不使用 VLM 原始输出的缺点
+  - 7.5 推荐策略
+- 8. 如果外部训练 K12 结构化层，梯度传播会不会困难？
+  - 8.1 结论
+  - 8.2 为什么不需要端到端梯度
+  - 8.3 什么时候需要微调 PaddleOCR-VL-1.5
+- 9. 如果微调 PP-DocLayoutV3 标注 question_block，结构化层是否还需要？
+  - 9.1 结论
+  - 9.2 只标注 question_block 能省掉什么？
+  - 9.3 只标注 question_block 不能解决什么？
+  - 9.4 为什么不能只输出 question_block？
+  - 9.5 推荐的 K12-enhanced PP-DocLayoutV3 输出类别
+  - 9.6 K12-enhanced layout 输出示例
+  - 9.7 微调 PP-DocLayoutV3 后的结构化层职责
+  - 9.8 微调 PP-DocLayoutV3 的收益与风险
+  - 9.9 决策建议
+- 10. K12 结构化层的建议输入输出
+  - 10.1 输入：Element Table
+  - 10.2 输出：K12 Question JSON
+- 11. 本次任务建议流程
+  - 11.1 第一阶段：不训练，确认输出与 baseline
+  - 11.2 第二阶段：K12 布局增强 / 题目组装
+  - 11.3 第三阶段：外部训练 K12 结构化层
+  - 11.4 第四阶段：知识点标注
+- 12. 跨页题处理原则
+- 13. 推荐实现优先级
+  - MVP 必做
+  - 第二阶段增强
+  - 第三阶段训练
+- 14. 本次任务的推荐主线
+- 15. 参考资料
+
 ---
 
 ## 0. 本版关键结论

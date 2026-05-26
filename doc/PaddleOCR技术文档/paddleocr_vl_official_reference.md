@@ -4,6 +4,50 @@
 日期：2026-05-20  
 用途：记录 PaddleOCR-VL-1.5、PP-DocLayoutV3、后处理 pipeline、训练数据格式和平台设计约束，避免后续开发时混淆 PaddleOCR-VL 输出、PP-DocLayoutV3 训练数据和 K12 自定义标注数据。
 
+## 目录
+
+- 1. 信息来源
+- 2. PaddleOCR-VL-1.5 的工程边界
+  - 2.1 不应把 0.9B VLM 当成完整 PaddleOCR-VL pipeline
+  - 2.2 推荐三段式理解
+- 3. PaddleOCR-VL pipeline 输入
+  - 3.1 CLI 输入
+  - 3.2 Python API 输入
+  - 3.3 关键 pipeline 参数
+- 4. Layout Analysis 阶段
+  - 4.1 PP-DocLayoutV3 定位
+  - 4.2 PP-DocLayoutV3 官方 25 类
+  - 4.3 PP-DocLayoutV3 推理输出
+  - 4.4 关于四点、多边形和 bbox
+- 5. VLM Recognition 阶段
+  - 5.1 完整 pipeline 中的 VLM 输入
+  - 5.2 0.9B standalone / transformers 任务
+- 6. Pipeline Post-processing 阶段
+  - 6.1 为什么后处理必须单独考虑
+  - 6.2 layout 相关后处理参数
+  - 6.3 多页后处理 restructure_pages
+- 7. PaddleOCR-VL pipeline 输出
+  - 7.1 Result 对象方法
+  - 7.2 JSON 输出字段
+  - 7.3 img 属性输出
+  - 7.4 markdown 属性输出
+  - 7.5 服务化接口输出
+- 8. PP-DocLayoutV3 训练数据格式
+  - 8.1 官方格式
+  - 8.2 annotation 示例
+  - 8.3 read_order 要求
+  - 8.4 check_dataset
+  - 8.5 训练、评估和集成
+- 9. 对 K12 标注平台的修正规则
+  - 9.1 主数据格式不能只围绕 PaddleOCR-VL res.json
+  - 9.2 原始输出只读保存
+  - 9.3 K12 自定义标签不要污染官方 25 类
+  - 9.4 几何字段必须升级
+  - 9.5 PP-DocLayoutV3 导出器的最低要求
+  - 9.6 PaddleOCR-VL 后处理输出的用途
+- 10. 后续需要继续核验的问题
+- 11. 当前结论
+
 ---
 
 ## 1. 信息来源
