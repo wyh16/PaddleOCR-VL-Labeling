@@ -1,7 +1,7 @@
 # 文档数据采集与标注平台后端设计文档
 
-版本：v0.1  
-日期：2026-05-21  
+版本：v0.3  
+日期：2026-05-26  
 依据文档：
 
 ```text
@@ -9,6 +9,16 @@ k12_annotation_platform_design.md
 paddleocr_vl_official_reference.md
 k12_exam_paper_requirements_eval_focused.md
 ```
+
+---
+
+## 版本记录
+
+| 版本 | 日期 | 说明 |
+|---|---|---|
+| v0.1 | 2026-05-21 | 初版后端设计文档，定义平台目标、架构、数据分层、核心表、API、流程、质检、导出器和验收标准。 |
+| v0.2 | 2026-05-26 | 调整文档边界：技术栈细节统一引用后端开发规范；异步任务统一为 Celery；保留架构、表、API、流程和模块设计。 |
+| v0.3 | 2026-05-26 | 章节名调整为“技术栈引用开发规范”；收敛架构与 MVP 中的具体框架表述，继续保留架构、表、API、流程和模块设计。 |
 
 ---
 
@@ -33,22 +43,23 @@ k12_exam_paper_requirements_eval_focused.md
 
 ---
 
-## 2. 技术选型建议
+## 2. 技术栈引用开发规范
 
-### 2.1 MVP 推荐
+具体技术栈、依赖版本、代码目录、配置、测试、安全和加密规范，以后端开发规范为准：
 
 ```text
-后端框架：FastAPI
-数据库：PostgreSQL
-异步任务：Celery + Redis，或 RQ + Redis
-文件存储：本地文件系统，后续可切换 MinIO / S3
-鉴权：JWT + RBAC
-结构化校验：Pydantic + JSON Schema
-导出任务：Python exporter scripts
-日志：structlog / logging + JSON log
+doc/开发文档/backend_development_spec.md
 ```
 
-### 2.2 为什么不用纯文件系统
+本设计文档只描述系统能力、模块边界、数据结构、API、业务流程、质检流程和导出流程；不重复维护依赖清单、代码风格、安全实现细则或本地开发命令。
+
+异步任务框架统一采用：
+
+```text
+Celery + Redis
+```
+
+### 2.1 为什么不用纯文件系统
 
 纯文件系统适合保存原始图片、模型输出和导出结果，但不适合作为唯一后端状态源。原因：
 
@@ -75,7 +86,7 @@ Frontend
   标注画布 / 任务列表 / 复核界面 / 导出管理
 
 API Server
-  FastAPI REST API
+  REST API 服务
   鉴权、权限、业务校验、元数据读写
 
 Database
@@ -1260,7 +1271,7 @@ request_id
 ### 17.1 第一阶段
 
 ```text
-1. FastAPI 项目骨架。
+1. 后端 API 项目骨架。
 2. PostgreSQL 表：assets / documents / pages / annotation_revisions。
 3. 文件上传、sha256、raw asset 归档。
 4. 页面列表和图片访问 API。
