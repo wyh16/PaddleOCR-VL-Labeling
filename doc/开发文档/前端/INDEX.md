@@ -34,7 +34,6 @@
 | `doc/开发文档/前端/frontend_routing_spec.md` | 设计或实现前端路由、路由参数、页面入口、导航守卫、403/404 和离页拦截 | 前端路由契约、route name、params、query、meta、layout、导航守卫、异常路由 |
 | `doc/开发文档/前端/frontend_component_library_spec.md` | 设计或实现前端组件、颜色 token、工作台布局、状态标签、表格表单、业务组件和多语言组件 | 前端组件库、设计 token、组件规格、多语言组件约束、视觉复用规则 |
 | `doc/开发文档/前端/annotation_workspace_interaction_spec.md` | 实现前端标注工作台、画布、bbox、缩放、read_order、保存冲突和 QC 定位 | 标注画布 MVP 交互、坐标系统、bbox 编辑、revision 冲突、QC 定位 |
-| `doc/开发文档/前端/annotation_workspace_interaction_spec_review.md` | review 标注工作台交互规范或确认待修正点 | 标注工作台交互 review 结果 |
 | `doc/开发文档/后端/INDEX.md` | 前端任务涉及 API、权限、错误码、annotation revision 或导出时 | 后端文档导航 |
 | `doc/开发文档/k12_annotation_platform_design.md` | 理解平台功能、标注格式、标签关系、版本和导出目标 | 功能设计、主数据格式、标注工作流 |
 | `doc/开发文档/mvp_implementation_plan.md` | 判断前端任务是否属于 MVP 范围 | MVP 阶段、开发顺序、验收标准 |
@@ -96,14 +95,6 @@
 2. doc/开发文档/前端/frontend_component_library_spec.md 的角色管理组件
 3. doc/开发文档/前端/frontend_routing_spec.md 的管理页面路由和导航守卫
 4. doc/开发文档/后端/INDEX.md 中角色、成员、capabilities 和审计相关路径
-```
-
-标注工作台 review 或修正规范任务：
-
-```text
-1. doc/开发文档/前端/annotation_workspace_interaction_spec_review.md
-2. doc/开发文档/前端/annotation_workspace_interaction_spec.md
-3. 涉及保存、权限或导出时读取 doc/开发文档/后端/INDEX.md
 ```
 
 ---
