@@ -1,0 +1,28 @@
+# Runtime dependencies for Python 3.11.
+
+# API and configuration
+fastapi>=0.115,<1.0
+uvicorn[standard]>=0.30,<1.0
+pydantic>=2.8,<3.0
+pydantic-settings>=2.4,<3.0
+python-dotenv>=1.0,<2.0
+python-multipart>=0.0.9,<1.0
+orjson>=3.10,<4.0
+
+# Database, cache, and background jobs
+sqlalchemy>=2.0,<3.0
+alembic>=1.13,<2.0
+psycopg[binary]>=3.2,<4.0
+redis>=5.0,<7.0
+celery>=5.4,<6.0
+
+# HTTP clients and task utilities
+requests>=2.32,<3.0
+aiohttp>=3.9,<4.0
+tqdm>=4.66,<5.0
+
+# Media and document processing
+opencv-python>=4.10,<5.0
+Pillow>=10.4,<13.0
+pdf2image>=1.17,<2.0
+numpy>=1.26,<3.0
