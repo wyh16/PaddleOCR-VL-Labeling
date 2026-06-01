@@ -42,10 +42,6 @@ class Settings(BaseSettings):
         default=False,
         validation_alias="PADDLEOCR_VL_ENABLED",
     )
-    paddleocr_vl_model_dir: str | None = Field(
-        default=None,
-        validation_alias="PADDLEOCR_VL_MODEL_DIR",
-    )
 
     model_config = SettingsConfigDict(
         env_file=".env",
