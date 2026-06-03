@@ -1,7 +1,7 @@
 # 文档标注平台后端开发规范
 
-版本：v0.6
-日期：2026-05-29  
+版本：v0.7
+日期：2026-06-03
 参考：
 
 ```text
@@ -93,6 +93,7 @@ doc/PaddleOCR技术文档/paddleocr_vl_official_reference.md
 | v0.4 | 2026-05-26 | 明确开发规范边界：保留技术栈、依赖、代码规范、安全规范和加密规范；业务架构、表、API、流程和模块设计以后端设计文档为准。 |
 | v0.5 | 2026-05-26 | 补充角色与权限实现规范：后端基于 user_id + project_id 计算 capabilities，角色变更必须审计，前端角色仅作展示。 |
 | v0.6 | 2026-05-29 | 新增后端代码注释规范，明确何时必须写注释、注释内容要求和禁止项。 |
+| v0.7 | 2026-06-03 | 收紧中文提交信息、中文注释、中文日志 message 和中文错误文案要求，统一引用提交规范文档。 |
 
 ---
 
@@ -240,17 +241,20 @@ optional-ai
 
 ```text
 backend/
+  alembic.ini
   app/
     main.py
     api/
       v1/
         router.py
         endpoints/
+          health.py
           auth.py
           projects.py
           documents.py
           pages.py
           annotations.py
+          roles.py
           paddleocr_runs.py
           qc.py
           exports.py
@@ -265,18 +269,26 @@ backend/
       base.py
       session.py
       models/
+        __init__.py
+        core.py
+        mixins.py
+        user.py
+        role.py
         asset.py
         project.py
         document.py
         page.py
         annotation.py
         label_registry.py
-        relation_registry.py
+        relation.py
         qc.py
         export.py
         job.py
+        audit.py
     schemas/
       asset.py
+      user.py
+      role.py
       project.py
       document.py
       page.py
@@ -286,11 +298,13 @@ backend/
       export.py
       job.py
     repositories/
+      roles.py
       assets.py
       documents.py
       annotations.py
       jobs.py
     services/
+      role_service.py
       asset_service.py
       annotation_service.py
       paddleocr_service.py
@@ -334,10 +348,13 @@ backend/
   tests/
     unit/
     integration/
+  sql/
+    admin/
+    schema/
   requirements.txt
   requirements-dev.txt
-.env.example
-README.md
+  .env.example
+  README.md
 ```
 
 约束：
@@ -348,6 +365,8 @@ service 层处理业务流程。
 repository 层处理数据库读写。
 exporter / qc / storage 作为独立模块，不直接依赖 API。
 worker task 调用 service，不直接写散落逻辑。
+app/db/models 只放 SQLAlchemy ORM 表模型，不放业务流程。
+backend/sql 只放 DBA 初始化、授权和人工审阅 SQL，不替代 Alembic migration。
 ```
 
 每个目录应在 README 或开发文档中说明用途，避免仅靠英文目录名理解职责。例如：
@@ -583,8 +602,10 @@ POST /api/v1/projects/{project_id}/exports
 {
   "error": {
     "code": "VALIDATION_ERROR",
-    "message": "Invalid annotation geometry",
-    "details": {}
+    "message": "标注几何数据无效：polygon 至少需要 3 个点，请修正后重新提交。",
+    "details": {
+      "field": "objects[0].polygon"
+    }
   },
   "request_id": "req_..."
 }
@@ -883,6 +904,8 @@ split 不泄漏
 
 ## 13. 日志与错误处理
 
+后端日志和错误文案以中文为主；`event`、`code`、`error_type`、`resource_type` 等机器可读字段保持英文稳定标识。
+
 日志格式：
 
 ```json
@@ -892,7 +915,7 @@ split 不泄漏
   "request_id": "req_...",
   "user_id": "user_...",
   "event": "annotation_revision_created",
-  "message": "...",
+  "message": "已创建页面标注版本，等待后续质检",
   "extra": {}
 }
 ```
@@ -902,9 +925,9 @@ split 不泄漏
 ```text
 1. 每个请求生成 request_id。
 2. 后台任务生成 job_id。
-3. 错误日志不泄露密码。
-4. API 返回错误码和用户可读 message。
-5. traceback 只进服务端日志。
+3. `message` 和 `error_message` 使用中文，写清业务动作、失败阶段和可排查标识。
+4. API 错误返回稳定 code、中文 message 和 request_id；参数错误尽量指出字段或对象。
+5. traceback、SQL、连接串、密钥、token 和敏感原文只允许进入脱敏后的服务端日志，不返回前端。
 ```
 
 ---
@@ -1464,10 +1487,13 @@ API 路径：kebab-case 或 snake_case 统一，推荐 kebab-case
 注释要求：
 
 ```text
-1. 使用中文，简洁明确，优先写在代码块上方。
-2. 说明输入假设、关键约束、失败路径，不重复函数名含义。
-3. 复杂函数建议补充 docstring，至少说明参数、返回值和异常语义。
-4. 注释必须与实现同步更新；修改逻辑时同步修改注释。
+1. 使用中文，优先写在代码块上方；英文缩写、协议名、库名可以保留英文，但必须配中文解释。
+2. 注释不能过短到只重复函数名，应说明业务背景、输入假设、关键约束、失败路径和安全边界。
+3. 复杂函数必须补充中文 docstring，至少说明参数含义、返回值、异常语义、事务边界和调用前提。
+4. 涉及权限、审计、加密、下载、导出、锁定、回滚、数据删除或迁移的代码，注释要写明“为什么这样做”和“不这样做的风险”。
+5. 涉及外部协议、PaddleOCR 输出、PP-DocLayoutV3 导出、PostgreSQL 特性或 Alembic 限制时，要标明文档来源或兼容原因。
+6. 复杂代码块上方注释至少覆盖：业务目的、前置条件、关键分支、失败处理、数据安全影响；如果其中某项不适用，可以省略但不能只写一句空泛概括。
+7. 注释必须与实现同步更新；修改逻辑时同步修改注释。
 ```
 
 禁止：
@@ -1477,6 +1503,9 @@ API 路径：kebab-case 或 snake_case 统一，推荐 kebab-case
 2. 过时注释与当前逻辑不一致。
 3. 保留大段注释掉的旧代码。
 4. 在注释中泄露密钥、真实地址、账号或敏感数据。
+5. 用英文注释解释业务规则、权限规则、错误处理或审计逻辑。
+6. 只写“处理数据”“校验参数”“创建记录”这类没有边界信息的注释。
+7. 用一两个词代替说明，例如“兼容处理”“特殊逻辑”“安全校验”，但不说明兼容什么、特殊在哪里、校验失败怎么办。
 ```
 
 ---
@@ -1533,30 +1562,19 @@ celery -A app.workers.celery_app worker --loglevel=INFO
 
 ## 18. Git 提交规范
 
+项目统一提交信息规范见：
+
+```text
+doc/开发文档/COMMIT_RULES.md
+```
+
+本节不重复维护提交标题、正文格式和示例；如需修改提交规范，只更新 `doc/开发文档/COMMIT_RULES.md`。
+
 提交前至少运行：
 
 ```powershell
 ruff check backend/app backend/tests
 pytest backend/tests
-```
-
-提交信息建议：
-
-```text
-feat: 新增标注版本 API
-fix: 修复导出前 polygon 边界校验
-docs: 更新后端开发规范
-test: 增加 PP-DocLayoutV3 导出器测试
-refactor: 拆分标注服务逻辑
-```
-
-禁止：
-
-```text
-1. 提交 .env。
-2. 提交真实上传数据。
-3. 提交临时导出包。
-4. 提交 __pycache__、.pytest_cache、日志文件。
 ```
 
 ---

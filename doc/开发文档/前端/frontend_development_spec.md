@@ -1,7 +1,7 @@
 # 文档标注平台前端开发规范
 
-版本：v0.7
-日期：2026-05-29
+版本：v0.8
+日期：2026-06-03
 参考：
 
 ```text
@@ -61,6 +61,7 @@ doc/开发文档/前端/frontend_component_library_spec.md
 | v0.5 | 2026-05-27 | 同步前端路由专题文档，明确路由契约由 `frontend_routing_spec.md` 维护，总规范只保留工程入口约束。 |
 | v0.6 | 2026-05-27 | 修正路由总规范口径：未知路径统一进入 404；项目任务和导出改为项目详情 tab URL 示例，避免误写为 route path。 |
 | v0.7 | 2026-05-29 | 恢复 MCP 浏览器联调测试规范章节；移除对 demo 文档的依赖引用。 |
+| v0.8 | 2026-06-03 | 收紧中文提交信息、中文注释、中文日志和中文错误文案要求，统一引用提交规范文档。 |
 
 ---
 
@@ -507,11 +508,19 @@ API 前缀：/api/v1
 统一错误对象字段：
 
 ```text
-message      可展示错误文案
+message      中文可展示错误文案，来自本地 i18n 映射或后端中文兜底 message
 status       HTTP 状态码
 code         后端业务错误码
 request_id   后端 request_id
 details      可选结构化错误详情
+```
+
+错误转换要求：
+
+```text
+1. API client 优先使用稳定 code 映射本地化中文文案。
+2. 不得把英文异常、浏览器原生错误或第三方库错误直接展示给用户。
+3. Error 对象保留 status / code / request_id / details，供 UI 定位和日志排查使用。
 ```
 
 状态码处理：
@@ -546,6 +555,7 @@ details      可选结构化错误详情
 2. 每个页面各写一套错误解析。
 3. 静默吞掉保存失败、导出失败或 QC 失败。
 4. 409 冲突时自动覆盖 latest revision。
+5. 直接展示 Network Error、Failed to fetch、Unexpected token 这类英文原始异常。
 ```
 
 ### 7.4 文件访问和下载
@@ -954,6 +964,8 @@ XSS 和内容安全：
 
 ## 15. 日志与错误展示
 
+前端日志和用户可见错误以中文为主；i18n key、route name、error code、接口字段名保持英文稳定标识。
+
 前端日志原则：
 
 ```text
@@ -961,6 +973,7 @@ XSS 和内容安全：
 2. 生产环境只输出必要错误摘要。
 3. 不输出敏感字段、完整 annotation JSON、完整 OCR 文本、完整下载 URL。
 4. 所有可上报错误必须带前端上下文和后端 request_id。
+5. console 日志 message 使用中文，写清页面、用户动作、失败阶段和 request_id。
 ```
 
 用户可见错误：
@@ -986,6 +999,7 @@ empty state
 2. 说明用户能做什么。
 3. 必要时显示 request_id。
 4. 不显示服务端 traceback。
+5. 权限、锁定、冲突、自动保存失败、文件加载失败必须写清影响范围和下一步动作。
 ```
 
 ---
@@ -1147,10 +1161,14 @@ CSS 自定义属性：--k12-name
 注释：
 
 ```text
-1. 复杂几何、权限、冲突处理和安全处理需要中文注释。
-2. 不写解释显而易见代码的空注释。
-3. 组件顶部可用短注释说明职责边界。
-4. 所有对外 API schema 字段显示，应有中文含义来源，不仅展示英文 key。
+1. 复杂几何、权限、冲突处理、自动保存、离页拦截、安全处理和下载逻辑必须写中文注释。
+2. 注释应说明业务背景、输入假设、状态边界、失败路径和用户影响，不只重复函数名或变量名。
+3. 组件顶部应使用中文说明职责边界；复杂组件还应说明不负责的逻辑，例如不直接提交复核、不直接判断最终权限。
+4. composable、store、API client 中的复杂函数应写中文 doc comment，说明参数、返回值、错误语义和副作用。
+5. 所有对外 API schema 字段显示，应有中文含义来源，不仅展示英文 key。
+6. i18n key、route name、capability code 可以保持英文稳定标识，但注释必须配中文解释。
+7. 复杂代码块注释至少覆盖：用户动作、状态前置条件、关键分支、失败后 UI 行为、是否会触发远端写操作。
+8. 修改复杂逻辑时必须同步更新注释，避免注释描述旧状态机或旧接口。
 ```
 
 禁止：
@@ -1218,15 +1236,13 @@ npm run test
 
 ## 19. Git 提交规范
 
-提交信息继续使用项目统一风格：
+项目统一提交信息规范见：
 
 ```text
-feat: add annotation workspace shell
-fix: handle revision conflict in annotation save
-docs: add frontend development spec
-test: cover geometry coordinate conversion
-refactor: split annotation api client
+doc/开发文档/COMMIT_RULES.md
 ```
+
+本节不重复维护提交标题、正文格式和示例；如需修改提交规范，只更新 `doc/开发文档/COMMIT_RULES.md`。
 
 要求：
 
@@ -1235,6 +1251,7 @@ refactor: split annotation api client
 2. 视觉调整和业务逻辑调整尽量分开提交。
 3. 新增复杂组件时同步提交测试或说明测试缺口。
 4. 更新前端规范时同步确认 AGENTS.md 索引是否需要调整。
+5. 提交正文按统一规范写明验证结果；如果未执行 `npm run build`、测试或浏览器联调，必须说明原因。
 ```
 
 ---
