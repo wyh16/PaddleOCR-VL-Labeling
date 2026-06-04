@@ -53,6 +53,9 @@ export default {
     revisionLog: 'Revision 日志',
     leaveConfirm: '当前有未保存的修改，确定要离开吗？',
   },
+  settings: {
+    language: '语言',
+  },
   // 路由标题 i18n key
   routes: {
     auth: {

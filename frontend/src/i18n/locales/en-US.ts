@@ -53,6 +53,9 @@ export default {
     revisionLog: 'Revision Log',
     leaveConfirm: 'You have unsaved changes. Are you sure you want to leave?',
   },
+  settings: {
+    language: 'Language',
+  },
   // Route title i18n keys
   routes: {
     auth: {
