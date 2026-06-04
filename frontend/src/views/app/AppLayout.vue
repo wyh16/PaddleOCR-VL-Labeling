@@ -1,17 +1,20 @@
 <script setup lang="ts">
 /**
  * 应用主布局
- * 负责工作台通用框架，包括侧边栏、顶部状态区、主内容区、全局 toast、全局 modal 容器
+ * 负责工作台通用框架，包括侧边栏、顶部状态区、主内容区
  */
 import { useI18n } from 'vue-i18n'
+import { useRouter } from 'vue-router'
 import { useAuth } from '@/composables/useAuth'
+import BaseButton from '@/components/base/BaseButton.vue'
 
 const { t } = useI18n()
-const { logout } = useAuth()
+const router = useRouter()
+const { user, logout } = useAuth()
 
 async function handleLogout() {
   await logout()
-  // TODO: 跳转到登录页
+  router.replace({ name: 'auth.login' })
 }
 </script>
 
@@ -42,12 +45,17 @@ async function handleLogout() {
       </nav>
 
       <div class="p-4 border-t border-border">
-        <button
-          class="w-full px-3 py-2 text-sm text-muted hover:text-text"
+        <div v-if="user" class="text-sm text-muted mb-2">
+          {{ user.username }}
+        </div>
+        <BaseButton
+          variant="secondary"
+          size="sm"
+          class="w-full"
           @click="handleLogout"
         >
           {{ t('auth.logout') }}
-        </button>
+        </BaseButton>
       </div>
     </aside>
 

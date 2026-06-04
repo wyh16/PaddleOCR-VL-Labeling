@@ -88,5 +88,9 @@ export default {
     notFound: '请求的资源不存在',
     server: '服务器错误，请稍后重试',
     unknown: '未知错误',
+    loginFailed: '用户名或密码错误',
+    badRequest: '请求参数错误',
+    conflict: '数据冲突，请刷新后重试',
+    validation: '数据校验失败',
   },
 }

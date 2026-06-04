@@ -88,5 +88,9 @@ export default {
     notFound: 'Resource not found',
     server: 'Server error, please try again later',
     unknown: 'Unknown error',
+    loginFailed: 'Invalid username or password',
+    badRequest: 'Invalid request',
+    conflict: 'Data conflict, please refresh and try again',
+    validation: 'Validation failed',
   },
 }

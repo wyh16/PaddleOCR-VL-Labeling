@@ -1,18 +1,66 @@
 <script setup lang="ts">
+/**
+ * 登录页
+ * 登录成功后跳回安全 redirect，否则跳到 projects.index
+ */
 import { ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
+import { useAuth } from '@/composables/useAuth'
+import { ApiClientError } from '@/api/client'
+import BaseInput from '@/components/base/BaseInput.vue'
+import BaseButton from '@/components/base/BaseButton.vue'
 
 const { t } = useI18n()
+const route = useRoute()
+const router = useRouter()
+const { login } = useAuth()
 
 const username = ref('')
 const password = ref('')
 const loading = ref(false)
+const error = ref('')
+
+/**
+ * redirect 安全校验
+ * 与 router 中保持一致
+ */
+function isValidRedirect(redirect: string): boolean {
+  if (!redirect.startsWith('/')) return false
+  if (redirect.startsWith('//')) return false
+  if (redirect.includes(':')) return false
+  if (redirect === '/auth/login') return false
+  return true
+}
 
 async function handleLogin() {
-  // TODO: 实现登录逻辑
+  if (!username.value || !password.value) return
+
   loading.value = true
+  error.value = ''
+
   try {
-    // await api.login(username.value, password.value)
+    await login(username.value, password.value)
+
+    // 登录成功，跳转 redirect 或默认页
+    const redirect = route.query.redirect as string
+    if (redirect && isValidRedirect(redirect)) {
+      router.replace(redirect)
+    } else {
+      router.replace({ name: 'projects.index' })
+    }
+  } catch (e) {
+    if (e instanceof ApiClientError) {
+      if (e.status === 401) {
+        error.value = t('errors.loginFailed')
+      } else if (e.status === 0) {
+        error.value = t('errors.network')
+      } else {
+        error.value = t('errors.server')
+      }
+    } else {
+      error.value = t('errors.unknown')
+    }
   } finally {
     loading.value = false
   }
@@ -24,37 +72,34 @@ async function handleLogin() {
     <h1 class="text-2xl font-bold text-center mb-6">{{ t('auth.login') }}</h1>
 
     <form @submit.prevent="handleLogin" class="space-y-4">
-      <div>
-        <label class="block text-sm font-medium text-text mb-1">
-          {{ t('auth.username') }}
-        </label>
-        <input
-          v-model="username"
-          type="text"
-          class="w-full px-3 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-accent"
-          :placeholder="t('auth.username')"
-        />
+      <div v-if="error" class="p-3 bg-danger/10 text-danger text-sm rounded-md">
+        {{ error }}
       </div>
 
-      <div>
-        <label class="block text-sm font-medium text-text mb-1">
-          {{ t('auth.password') }}
-        </label>
-        <input
-          v-model="password"
-          type="password"
-          class="w-full px-3 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-accent"
-          :placeholder="t('auth.password')"
-        />
-      </div>
-
-      <button
-        type="submit"
+      <BaseInput
+        v-model="username"
+        :label="t('auth.username')"
+        :placeholder="t('auth.username')"
         :disabled="loading"
-        class="w-full py-2 px-4 bg-accent text-white rounded-md hover:bg-accent/90 disabled:opacity-50"
+      />
+
+      <BaseInput
+        v-model="password"
+        type="password"
+        :label="t('auth.password')"
+        :placeholder="t('auth.password')"
+        :disabled="loading"
+      />
+
+      <BaseButton
+        type="submit"
+        variant="primary"
+        :loading="loading"
+        :disabled="!username || !password"
+        class="w-full"
       >
-        {{ loading ? t('common.loading') : t('auth.login') }}
-      </button>
+        {{ t('auth.login') }}
+      </BaseButton>
     </form>
 
     <p class="mt-4 text-center text-sm text-muted">

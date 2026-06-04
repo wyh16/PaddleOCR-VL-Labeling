@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import type { RouteRecordRaw } from 'vue-router'
+import { useAuth } from '@/composables/useAuth'
 
 /**
  * 路由 Meta 类型定义
@@ -159,10 +160,22 @@ const router = createRouter({
 })
 
 /**
+ * redirect 安全校验
+ * 只允许站内相对路径，不允许 // 开头或包含协议
+ */
+function isValidRedirect(redirect: string): boolean {
+  if (!redirect.startsWith('/')) return false
+  if (redirect.startsWith('//')) return false
+  if (redirect.includes(':')) return false
+  if (redirect === '/auth/login') return false
+  return true
+}
+
+/**
  * 全局导航守卫
  * 参考：doc/开发文档/前端/frontend_routing_spec.md 第 11 章
  */
-router.beforeEach((to, _from, next) => {
+router.beforeEach(async (to, _from, next) => {
   // 未匹配路由进入 404
   if (to.matched.length === 0) {
     next({ name: 'error.notFound' })
@@ -170,18 +183,22 @@ router.beforeEach((to, _from, next) => {
   }
 
   const meta = to.meta as AppRouteMeta
+  const { ensureSession } = useAuth()
 
-  // TODO: 检查登录状态
-  const isAuthenticated = false // checkAuth()
+  // 确保会话已初始化
+  const loggedIn = await ensureSession()
 
-  if (meta.requiresAuth && !isAuthenticated) {
-    // 保存 redirect，登录后跳回
-    next({ name: 'auth.login', query: { redirect: to.fullPath } })
+  // 需要登录但未登录 → 跳转登录页，携带 redirect
+  if (meta.requiresAuth && !loggedIn) {
+    next({
+      name: 'auth.login',
+      query: { redirect: to.fullPath },
+    })
     return
   }
 
-  // 已登录访问登录页，跳转 redirect 或默认页
-  if (meta.allowWhenAuthenticated === false && isAuthenticated) {
+  // 已登录访问登录/注册页 → 跳转 redirect 或默认页
+  if (meta.allowWhenAuthenticated === false && loggedIn) {
     const redirect = to.query.redirect as string
     if (redirect && isValidRedirect(redirect)) {
       next(redirect)
@@ -193,17 +210,5 @@ router.beforeEach((to, _from, next) => {
 
   next()
 })
-
-/**
- * redirect 安全校验
- * 只允许站内相对路径，不允许 // 开头或包含协议
- */
-function isValidRedirect(redirect: string): boolean {
-  if (!redirect.startsWith('/')) return false
-  if (redirect.startsWith('//')) return false
-  if (redirect.includes(':')) return false
-  if (redirect === '/auth/login') return false
-  return true
-}
 
 export default router
