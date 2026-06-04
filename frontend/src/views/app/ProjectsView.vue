@@ -17,7 +17,10 @@ const projects = ref<Project[]>([])
 const loading = ref(true)
 const error = ref('')
 
-onMounted(async () => {
+async function loadProjects() {
+  loading.value = true
+  error.value = ''
+
   try {
     const response = await projectsApi.list()
     projects.value = response.items
@@ -34,6 +37,10 @@ onMounted(async () => {
   } finally {
     loading.value = false
   }
+}
+
+onMounted(() => {
+  loadProjects()
 })
 
 function goToProject(projectId: string) {
@@ -61,7 +68,7 @@ function goToProject(projectId: string) {
     <!-- Error -->
     <div v-else-if="error" class="text-center py-12">
       <p class="text-danger mb-4">{{ error }}</p>
-      <BaseButton variant="secondary" size="sm" @click="() => { loading = true; error = ''; }">
+      <BaseButton variant="secondary" size="sm" @click="loadProjects">
         {{ t('common.retry') }}
       </BaseButton>
     </div>

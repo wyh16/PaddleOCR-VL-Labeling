@@ -24,6 +24,8 @@ export default {
     forgotPassword: 'Forgot Password',
     noAccount: "Don't have an account?",
     hasAccount: 'Already have an account?',
+    registerUnavailableTitle: 'Registration is disabled',
+    registerUnavailableDescription: 'Please contact an administrator to create an account, or return to the login page.',
   },
   project: {
     title: 'Projects',

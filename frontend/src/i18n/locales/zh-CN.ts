@@ -24,6 +24,8 @@ export default {
     forgotPassword: '忘记密码',
     noAccount: '没有账号？',
     hasAccount: '已有账号？',
+    registerUnavailableTitle: '当前未开放注册',
+    registerUnavailableDescription: '请联系管理员创建账号，或返回登录页继续使用已有账号登录。',
   },
   project: {
     title: '项目列表',

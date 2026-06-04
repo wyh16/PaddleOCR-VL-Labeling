@@ -12,7 +12,7 @@
  * 1. 不在路由层实现 bbox 绘制、坐标换算、自动保存 debounce 或冲突合并算法
  */
 import { ref, provide, onMounted, onUnmounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, type RouteLocationNormalized } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
@@ -24,11 +24,18 @@ type SaveStatus = 'saved' | 'dirty' | 'autosave_pending' | 'autosaving' | 'autos
 const saveStatus = ref<SaveStatus>('saved')
 const pageTitle = ref('')
 
-// 向子组件提供保存状态
-provide('saveStatus', saveStatus)
-provide('updateSaveStatus', (status: SaveStatus) => {
+function updateSaveStatus(status: SaveStatus) {
   saveStatus.value = status
-})
+}
+
+function updatePageTitle(title: string) {
+  pageTitle.value = title
+}
+
+// 向子组件提供保存状态和页面标题更新能力
+provide('saveStatus', saveStatus)
+provide('updateSaveStatus', updateSaveStatus)
+provide('updatePageTitle', updatePageTitle)
 
 /**
  * 判断当前状态是否需要离页确认
@@ -38,25 +45,42 @@ function needsLeaveConfirmation(): boolean {
 }
 
 /**
+ * 工作台内部只有对象定位、面板切换等轻量 Query 变化时，不触发离页确认。
+ * 切换 page_id 或 revision_id 视为可能丢失上下文，必须走离页确认。
+ */
+function isLightweightWorkspaceNavigation(
+  to: RouteLocationNormalized,
+  from: RouteLocationNormalized,
+): boolean {
+  if (!to.meta.workspaceRoute || !from.meta.workspaceRoute) {
+    return false
+  }
+
+  return (
+    to.params.page_id === from.params.page_id &&
+    (to.query.revision_id ?? '') === (from.query.revision_id ?? '')
+  )
+}
+
+/**
  * 路由离开守卫
  */
 const unregisterGuard = router.beforeEach((to, _from, next) => {
-  // 只处理从工作台离开的情况
-  if (to.meta.workspaceRoute) {
+  if (!needsLeaveConfirmation()) {
     next()
     return
   }
 
-  if (needsLeaveConfirmation()) {
-    // TODO: 显示确认对话框
-    const confirmed = window.confirm(t('workspace.leaveConfirm'))
-    if (confirmed) {
-      next()
-    } else {
-      next(false)
-    }
-  } else {
+  if (isLightweightWorkspaceNavigation(to, _from)) {
     next()
+    return
+  }
+
+  const confirmed = window.confirm(t('workspace.leaveConfirm'))
+  if (confirmed) {
+    next()
+  } else {
+    next(false)
   }
 })
 
@@ -91,16 +115,13 @@ onUnmounted(() => {
 
       <!-- 保存状态指示器 -->
       <div class="ml-auto">
-        <span
-          class="text-xs px-2 py-1 rounded"
-          :class="{
-            'bg-success/10 text-success': saveStatus === 'saved',
-            'bg-warning/10 text-warning': saveStatus === 'dirty' || saveStatus === 'autosave_pending',
-            'bg-accent/10 text-accent': saveStatus === 'autosaving' || saveStatus === 'manual_saving',
-            'bg-danger/10 text-danger': saveStatus === 'autosave_failed' || saveStatus === 'conflict',
-            'bg-muted/10 text-muted': saveStatus === 'readonly',
-          }"
-        >
+        <span class="text-xs px-2 py-1 rounded" :class="{
+          'bg-success/10 text-success': saveStatus === 'saved',
+          'bg-warning/10 text-warning': saveStatus === 'dirty' || saveStatus === 'autosave_pending',
+          'bg-accent/10 text-accent': saveStatus === 'autosaving' || saveStatus === 'manual_saving',
+          'bg-danger/10 text-danger': saveStatus === 'autosave_failed' || saveStatus === 'conflict',
+          'bg-muted/10 text-muted': saveStatus === 'readonly',
+        }">
           {{ t(`annotation.saveStatus.${saveStatus}`) }}
         </span>
       </div>
@@ -120,11 +141,7 @@ onUnmounted(() => {
 
       <!-- 中间画布区 -->
       <main class="flex-1 bg-background relative overflow-hidden">
-        <slot>
-          <div class="absolute inset-0 flex items-center justify-center text-muted">
-            {{ t('workspace.canvasPlaceholder') }}
-          </div>
-        </slot>
+        <router-view />
       </main>
 
       <!-- 右侧属性/QC 面板 -->

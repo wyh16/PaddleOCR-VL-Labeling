@@ -6,13 +6,14 @@
  *
  * 参考：doc/开发文档/前端/frontend_routing_spec.md 第 14 章
  */
-import { ref, computed, onMounted, provide, watch } from 'vue'
+import { ref, computed, onMounted, inject, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { pagesApi, type Page, type Capabilities } from '@/api/pages'
 import { annotationsApi, type AnnotationRevision } from '@/api/annotations'
 import { qcApi, type QcIssue } from '@/api/qc'
 import { ApiClientError } from '@/api/client'
+import BaseButton from '@/components/base/BaseButton.vue'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -38,15 +39,18 @@ const isReadonly = computed(() => {
   return false
 })
 
-// 向布局层提供保存状态
-const saveStatus = ref<'saved' | 'dirty' | 'readonly'>('saved')
-provide('saveStatus', saveStatus)
+const updateSaveStatus = inject<((status: 'saved' | 'dirty' | 'readonly') => void) | undefined>('updateSaveStatus')
+const updatePageTitle = inject<((title: string) => void) | undefined>('updatePageTitle')
 
-/** 更新保存状态 */
-function updateSaveStatus(status: 'saved' | 'dirty' | 'readonly') {
-  saveStatus.value = status
+function syncWorkspaceMeta() {
+  updateSaveStatus?.(isReadonly.value ? 'readonly' : 'saved')
+
+  if (page.value) {
+    updatePageTitle?.(page.value.filename)
+  } else {
+    updatePageTitle?.(t('routes.pages.workspace'))
+  }
 }
-provide('updateSaveStatus', updateSaveStatus)
 
 /** 加载工作台数据 */
 async function loadWorkspace() {
@@ -57,8 +61,9 @@ async function loadWorkspace() {
   try {
     // 1. 校验 page_id
     if (!pageId.value) {
-      error.value = t('errors.notFound')
+        error.value = t('errors.notFound')
       errorCode.value = 404
+        syncWorkspaceMeta()
       return
     }
 
@@ -76,6 +81,7 @@ async function loadWorkspace() {
           error.value = t('errors.server')
         }
       }
+      syncWorkspaceMeta()
       return
     }
 
@@ -113,11 +119,7 @@ async function loadWorkspace() {
     }
 
     // 6. 更新保存状态
-    if (isReadonly.value) {
-      saveStatus.value = 'readonly'
-    } else {
-      saveStatus.value = 'saved'
-    }
+    syncWorkspaceMeta()
   } finally {
     loading.value = false
   }
@@ -126,6 +128,10 @@ async function loadWorkspace() {
 // 监听 page_id 或 revision_id 变化
 watch([pageId, revisionId], () => {
   loadWorkspace()
+})
+
+watch(isReadonly, () => {
+  syncWorkspaceMeta()
 })
 
 onMounted(() => {
@@ -145,12 +151,9 @@ onMounted(() => {
       <div class="text-center">
         <p class="text-lg text-text mb-2">{{ error }}</p>
         <p v-if="errorCode" class="text-sm text-muted mb-4">Error {{ errorCode }}</p>
-        <button
-          class="px-4 py-2 bg-accent text-white rounded-md hover:bg-accent/90"
-          @click="loadWorkspace"
-        >
+        <BaseButton variant="primary" @click="loadWorkspace">
           {{ t('common.retry') }}
-        </button>
+        </BaseButton>
       </div>
     </div>
 
@@ -168,7 +171,7 @@ onMounted(() => {
             Revision #{{ revision.revision_no }}
           </p>
           <p v-if="qcIssues.length > 0" class="text-xs mt-1 text-danger">
-            {{ qcIssues.length }} QC {{ t('errors.notFound') }}
+            {{ qcIssues.length }} QC issue(s)
           </p>
         </div>
       </div>

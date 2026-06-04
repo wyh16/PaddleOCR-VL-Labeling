@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * 注册页
- * 使用基础组件，统一表单样式
+ * MVP 默认不开放注册，页面只展示说明和返回登录入口
  */
 import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -14,23 +14,10 @@ const username = ref('')
 const email = ref('')
 const password = ref('')
 const loading = ref(false)
-const error = ref('')
+const registrationEnabled = false
 
 async function handleRegister() {
-  if (!username.value || !email.value || !password.value) return
-
-  loading.value = true
-  error.value = ''
-
-  try {
-    // TODO: 接入注册 API
-    // await authApi.register({ username: username.value, email: email.value, password: password.value })
-    // router.replace({ name: 'auth.login' })
-  } catch (e) {
-    error.value = t('errors.unknown')
-  } finally {
-    loading.value = false
-  }
+  if (!registrationEnabled) return
 }
 </script>
 
@@ -39,15 +26,19 @@ async function handleRegister() {
     <h1 class="text-2xl font-bold text-center mb-6">{{ t('auth.register') }}</h1>
 
     <form @submit.prevent="handleRegister" class="space-y-4">
-      <div v-if="error" class="p-3 bg-danger/10 text-danger text-sm rounded-md">
-        {{ error }}
+      <div
+        v-if="!registrationEnabled"
+        class="p-3 bg-warning/10 text-warning text-sm rounded-md"
+      >
+        <p class="font-medium">{{ t('auth.registerUnavailableTitle') }}</p>
+        <p class="mt-1">{{ t('auth.registerUnavailableDescription') }}</p>
       </div>
 
       <BaseInput
         v-model="username"
         :label="t('auth.username')"
         :placeholder="t('auth.username')"
-        :disabled="loading"
+        :disabled="loading || !registrationEnabled"
       />
 
       <BaseInput
@@ -55,7 +46,7 @@ async function handleRegister() {
         type="email"
         :label="t('auth.email')"
         :placeholder="t('auth.email')"
-        :disabled="loading"
+        :disabled="loading || !registrationEnabled"
       />
 
       <BaseInput
@@ -63,14 +54,14 @@ async function handleRegister() {
         type="password"
         :label="t('auth.password')"
         :placeholder="t('auth.password')"
-        :disabled="loading"
+        :disabled="loading || !registrationEnabled"
       />
 
       <BaseButton
         type="submit"
         variant="primary"
         :loading="loading"
-        :disabled="!username || !email || !password"
+        :disabled="!registrationEnabled || !username || !email || !password"
         class="w-full"
       >
         {{ t('auth.register') }}
