@@ -59,7 +59,7 @@ async function handleLogin() {
 
     <p class="mt-4 text-center text-sm text-muted">
       {{ t('auth.noAccount') }}
-      <router-link to="/auth/register" class="text-accent hover:underline">
+      <router-link :to="{ name: 'auth.register' }" class="text-accent hover:underline">
         {{ t('auth.register') }}
       </router-link>
     </p>
