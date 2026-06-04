@@ -66,8 +66,11 @@ export default {
       index: '项目列表',
       detail: '项目详情',
       tabs: {
+        pages: '页面',
+        members: '成员',
         jobs: '任务',
         exports: '导出',
+        settings: '设置',
       },
     },
     pages: {

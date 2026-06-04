@@ -66,8 +66,11 @@ export default {
       index: 'Projects',
       detail: 'Project Detail',
       tabs: {
+        pages: 'Pages',
+        members: 'Members',
         jobs: 'Jobs',
         exports: 'Exports',
+        settings: 'Settings',
       },
     },
     pages: {
