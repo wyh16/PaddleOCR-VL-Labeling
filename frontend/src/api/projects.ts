@@ -1,7 +1,8 @@
 /**
  * 项目相关 API
  */
-import { api } from './client'
+import { api, mockFallback } from './client'
+import { mockProjects, mockDelay } from './mock'
 
 export interface Project {
   id: string
@@ -19,16 +20,33 @@ export interface ProjectListResponse {
 
 export const projectsApi = {
   /** 获取项目列表 */
-  list: (_params?: { page?: number; size?: number }) =>
-    api.get<ProjectListResponse>('/projects'),
+  list: (_params?: { page?: number; size?: number }) => mockFallback(
+    () => api.get<ProjectListResponse>('/projects'),
+    () => mockDelay({ items: mockProjects, total: mockProjects.length }),
+  ),
 
   /** 获取项目详情 */
-  get: (projectId: string) =>
-    api.get<Project>(`/projects/${projectId}`),
+  get: (projectId: string) => mockFallback(
+    () => api.get<Project>(`/projects/${projectId}`),
+    () => {
+      const project = mockProjects.find(p => p.id === projectId)
+      if (!project) throw new Error('Project not found')
+      return mockDelay(project)
+    },
+  ),
 
   /** 创建项目 */
-  create: (data: { name: string; description?: string }) =>
-    api.post<Project>('/projects', data),
+  create: (data: { name: string; description?: string }) => mockFallback(
+    () => api.post<Project>('/projects', data),
+    () => mockDelay({
+      id: `proj-${Date.now()}`,
+      name: data.name,
+      description: data.description || '',
+      status: 'active',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }),
+  ),
 
   /** 更新项目 */
   update: (projectId: string, data: Partial<Project>) =>

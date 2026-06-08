@@ -1,7 +1,8 @@
 /**
  * 标注相关 API
  */
-import { api } from './client'
+import { api, mockFallback } from './client'
+import { mockRevision, mockDelay } from './mock'
 
 export interface AnnotationRevision {
   id: string
@@ -21,14 +22,18 @@ export interface AnnotationDraft {
 
 export const annotationsApi = {
   /** 获取页面最新标注 */
-  getLatest: (pageId: string) =>
-    api.get<AnnotationRevision>(`/pages/${pageId}/annotations/latest`),
+  getLatest: (pageId: string) => mockFallback(
+    () => api.get<AnnotationRevision>(`/pages/${pageId}/annotations/latest`),
+    () => mockDelay({ ...mockRevision, page_id: pageId }),
+  ),
 
   /** 保存标注修订 */
   save: (pageId: string, draft: AnnotationDraft) =>
     api.post<AnnotationRevision>(`/pages/${pageId}/annotations`, draft),
 
   /** 获取标注历史 */
-  listRevisions: (pageId: string) =>
-    api.get<AnnotationRevision[]>(`/pages/${pageId}/annotations`),
+  listRevisions: (pageId: string) => mockFallback(
+    () => api.get<AnnotationRevision[]>(`/pages/${pageId}/annotations`),
+    () => mockDelay([{ ...mockRevision, page_id: pageId }]),
+  ),
 }

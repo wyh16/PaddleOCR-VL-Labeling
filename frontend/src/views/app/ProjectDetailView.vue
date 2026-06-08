@@ -7,79 +7,81 @@
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
+import BaseTabs from '@/components/base/BaseTabs.vue'
 
 const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
 
-/** tab 白名单 */
 const VALID_TABS = ['pages', 'members', 'jobs', 'exports', 'settings'] as const
 type Tab = typeof VALID_TABS[number]
 
-/**
- * 当前 tab，从 Query 读取，非法值回退到 'pages'
- * 使用 computed 保证 URL 变化时自动更新
- */
 const activeTab = computed<Tab>(() => {
   const tab = route.query.tab as string
-  if (tab && VALID_TABS.includes(tab as Tab)) {
-    return tab as Tab
-  }
+  if (tab && VALID_TABS.includes(tab as Tab)) return tab as Tab
   return 'pages'
 })
 
-/** 切换 tab，更新 URL Query */
-function switchTab(tab: Tab) {
-  router.replace({
-    query: { ...route.query, tab },
-  })
-}
+const tabs = computed(() => VALID_TABS.map(key => ({
+  key,
+  label: t(`routes.projects.tabs.${key}`),
+})))
 
-// TODO: 加载项目详情
+function switchTab(tab: string) {
+  router.replace({ query: { ...route.query, tab } })
+}
 </script>
 
 <template>
-  <div class="p-6">
-    <h2 class="text-2xl font-bold text-text mb-6">{{ t('routes.projects.detail') }}</h2>
+  <div class="flex-1 overflow-auto">
+    <div class="max-w-5xl mx-auto p-6">
+      <!-- 页面头部 -->
+      <div class="mb-6">
+        <nav class="flex items-center gap-1.5 text-caption text-text-secondary mb-3">
+          <router-link :to="{ name: 'projects.index' }" class="hover:text-text transition-colors">
+            {{ t('routes.projects.index') }}
+          </router-link>
+          <span class="text-text-muted">/</span>
+          <span class="text-text">{{ t('routes.projects.detail') }}</span>
+        </nav>
+        <h1 class="text-title text-text">{{ t('routes.projects.detail') }}</h1>
+      </div>
 
-    <!-- Tab 导航 -->
-    <div class="border-b border-border mb-6">
-      <nav class="flex space-x-8">
-        <button
-          v-for="tab in VALID_TABS"
-          :key="tab"
-          class="py-2 px-1 border-b-2 text-sm font-medium transition-colors"
-          :class="activeTab === tab
-            ? 'border-accent text-accent'
-            : 'border-transparent text-muted hover:text-text'"
-          @click="switchTab(tab)"
-        >
-          {{ t(`routes.projects.tabs.${tab}`) }}
-        </button>
-      </nav>
-    </div>
+      <!-- Tab 导航 -->
+      <BaseTabs
+        :tabs="tabs"
+        :active-key="activeTab"
+        class="mb-6"
+        @update:active-key="switchTab"
+      />
 
-    <!-- Tab 内容 -->
-    <div>
-      <div v-if="activeTab === 'pages'">
-        <!-- TODO: 页面列表 -->
-        <p class="text-muted">{{ t('common.loading') }}</p>
-      </div>
-      <div v-else-if="activeTab === 'members'">
-        <!-- TODO: 成员列表 -->
-        <p class="text-muted">{{ t('common.loading') }}</p>
-      </div>
-      <div v-else-if="activeTab === 'jobs'">
-        <!-- TODO: 任务列表 -->
-        <p class="text-muted">{{ t('common.loading') }}</p>
-      </div>
-      <div v-else-if="activeTab === 'exports'">
-        <!-- TODO: 导出列表 -->
-        <p class="text-muted">{{ t('common.loading') }}</p>
-      </div>
-      <div v-else-if="activeTab === 'settings'">
-        <!-- TODO: 项目设置 -->
-        <p class="text-muted">{{ t('common.loading') }}</p>
+      <!-- Tab 内容 -->
+      <div class="py-4">
+        <div v-if="activeTab === 'pages'">
+          <div class="text-center py-12">
+            <p class="text-body text-text-muted">{{ t('common.noData') }}</p>
+          </div>
+        </div>
+        <div v-else-if="activeTab === 'members'">
+          <div class="text-center py-12">
+            <p class="text-body text-text-muted">{{ t('common.noData') }}</p>
+          </div>
+        </div>
+        <div v-else-if="activeTab === 'jobs'">
+          <div class="text-center py-12">
+            <p class="text-body text-text-muted">{{ t('common.noData') }}</p>
+          </div>
+        </div>
+        <div v-else-if="activeTab === 'exports'">
+          <div class="text-center py-12">
+            <p class="text-body text-text-muted">{{ t('common.noData') }}</p>
+          </div>
+        </div>
+        <div v-else-if="activeTab === 'settings'">
+          <div class="text-center py-12">
+            <p class="text-body text-text-muted">{{ t('common.noData') }}</p>
+          </div>
+        </div>
       </div>
     </div>
   </div>

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * 标注工作台布局组件
- * 负责标注工作台外壳，包括左任务队列、中间画布、右属性/QC 面板、底部 revision 或任务日志区域
+ * 负责标注工作台外壳：面包屑、状态统计栏、工具栏、左右面板、画布、底部缩略图条、底部状态栏
  *
  * 职责：
  * 1. 接入工作台保存状态
@@ -14,90 +14,53 @@
 import { ref, provide, onMounted, onUnmounted } from 'vue'
 import { useRouter, type RouteLocationNormalized } from 'vue-router'
 import { useI18n } from 'vue-i18n'
+import {
+  Search,
+  Keyboard,
+  Bell,
+  HelpCircle,
+  ChevronDown,
+  Settings,
+} from 'lucide-vue-next'
 
 const { t } = useI18n()
 const router = useRouter()
 
-// 保存状态：saved | dirty | autosave_pending | autosaving | autosave_failed | manual_saving | conflict | readonly
+// ── 保存状态 ──
 type SaveStatus = 'saved' | 'dirty' | 'autosave_pending' | 'autosaving' | 'autosave_failed' | 'manual_saving' | 'conflict' | 'readonly'
 
 const saveStatus = ref<SaveStatus>('saved')
 const pageTitle = ref('')
 
-function updateSaveStatus(status: SaveStatus) {
-  saveStatus.value = status
-}
+function updateSaveStatus(status: SaveStatus) { saveStatus.value = status }
+function updatePageTitle(title: string) { pageTitle.value = title }
 
-function updatePageTitle(title: string) {
-  pageTitle.value = title
-}
-
-// 向子组件提供保存状态和页面标题更新能力
 provide('saveStatus', saveStatus)
 provide('updateSaveStatus', updateSaveStatus)
 provide('updatePageTitle', updatePageTitle)
 
-/**
- * 判断当前状态是否需要离页确认
- */
+// ── 离页守卫 ──
 function needsLeaveConfirmation(): boolean {
   return ['dirty', 'autosave_pending', 'autosaving', 'autosave_failed', 'manual_saving', 'conflict'].includes(saveStatus.value)
 }
 
-/**
- * 工作台内部只有对象定位、面板切换等轻量 Query 变化时，不触发离页确认。
- * 切换 page_id 或 revision_id 视为可能丢失上下文，必须走离页确认。
- */
-function isLightweightWorkspaceNavigation(
-  to: RouteLocationNormalized,
-  from: RouteLocationNormalized,
-): boolean {
-  if (!to.meta.workspaceRoute || !from.meta.workspaceRoute) {
-    return false
-  }
-
-  return (
-    to.params.page_id === from.params.page_id &&
-    (to.query.revision_id ?? '') === (from.query.revision_id ?? '')
-  )
+function isLightweightWorkspaceNavigation(to: RouteLocationNormalized, from: RouteLocationNormalized): boolean {
+  if (!to.meta.workspaceRoute || !from.meta.workspaceRoute) return false
+  return to.params.page_id === from.params.page_id && (to.query.revision_id ?? '') === (from.query.revision_id ?? '')
 }
 
-/**
- * 路由离开守卫
- */
 const unregisterGuard = router.beforeEach((to, _from, next) => {
-  if (!needsLeaveConfirmation()) {
-    next()
-    return
-  }
-
-  if (isLightweightWorkspaceNavigation(to, _from)) {
-    next()
-    return
-  }
-
+  if (!needsLeaveConfirmation()) { next(); return }
+  if (isLightweightWorkspaceNavigation(to, _from)) { next(); return }
   const confirmed = window.confirm(t('workspace.leaveConfirm'))
-  if (confirmed) {
-    next()
-  } else {
-    next(false)
-  }
+  confirmed ? next() : next(false)
 })
 
-/**
- * 浏览器关闭/刷新守卫
- */
 function handleBeforeUnload(event: BeforeUnloadEvent) {
-  if (needsLeaveConfirmation()) {
-    event.preventDefault()
-    event.returnValue = ''
-  }
+  if (needsLeaveConfirmation()) { event.preventDefault(); event.returnValue = '' }
 }
 
-onMounted(() => {
-  window.addEventListener('beforeunload', handleBeforeUnload)
-})
-
+onMounted(() => { window.addEventListener('beforeunload', handleBeforeUnload) })
 onUnmounted(() => {
   window.removeEventListener('beforeunload', handleBeforeUnload)
   unregisterGuard()
@@ -105,60 +68,176 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="h-screen flex flex-col">
-    <!-- 顶部工具栏 -->
-    <header class="h-12 bg-surface border-b border-border flex items-center px-4 shrink-0">
-      <router-link :to="{ name: 'projects.index' }" class="text-muted hover:text-text mr-4">
-        {{ t('common.back') }}
-      </router-link>
-      <h1 class="text-sm font-medium text-text">{{ pageTitle || t('routes.pages.workspace') }}</h1>
+  <div class="h-screen flex flex-col bg-bg-app">
+    <!-- ═══ 顶部面包屑栏 ═══ -->
+    <header class="h-12 bg-surface border-b border-border flex items-center px-4 shrink-0 z-sticky">
+      <!-- 面包屑 -->
+      <nav class="flex items-center gap-1.5 text-caption text-text-secondary" aria-label="Breadcrumb">
+        <router-link :to="{ name: 'projects.index' }" class="hover:text-text transition-colors">
+          {{ t('nav.projects') }}
+        </router-link>
+        <span class="text-text-muted">/</span>
+        <span class="text-text truncate max-w-48">小学数学试卷项目</span>
+        <span class="text-text-muted">/</span>
+        <span class="text-text truncate max-w-48">任务-20240527-001</span>
+        <span class="text-text-muted">/</span>
+        <span class="text-text font-medium">{{ pageTitle || t('routes.pages.workspace') }}</span>
+      </nav>
 
-      <!-- 保存状态指示器 -->
-      <div class="ml-auto">
-        <span class="text-xs px-2 py-1 rounded" :class="{
-          'bg-success/10 text-success': saveStatus === 'saved',
-          'bg-warning/10 text-warning': saveStatus === 'dirty' || saveStatus === 'autosave_pending',
-          'bg-accent/10 text-accent': saveStatus === 'autosaving' || saveStatus === 'manual_saving',
-          'bg-danger/10 text-danger': saveStatus === 'autosave_failed' || saveStatus === 'conflict',
-          'bg-muted/10 text-muted': saveStatus === 'readonly',
-        }">
-          {{ t(`annotation.saveStatus.${saveStatus}`) }}
-        </span>
+      <!-- 右侧操作区 -->
+      <div class="ml-auto flex items-center gap-2">
+        <!-- 搜索 -->
+        <div class="relative">
+          <Search class="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-muted" />
+          <input
+            type="text"
+            :placeholder="t('common.searchPlaceholder')"
+            class="h-7 w-56 pl-7 pr-8 text-caption bg-surface-muted border border-border rounded-md text-text placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-focus focus:border-primary transition-colors"
+          />
+          <kbd class="absolute right-1.5 top-1/2 -translate-y-1/2 text-micro font-mono text-text-muted bg-surface border border-border rounded px-1 py-0.5">
+            ⌘K
+          </kbd>
+        </div>
+
+        <!-- 快捷键 -->
+        <button class="h-7 px-2 text-caption text-text-secondary hover:bg-surface-muted rounded-md flex items-center gap-1 transition-colors">
+          <Keyboard class="w-3.5 h-3.5" />
+          {{ t('project.keyboardShortcuts') }}
+        </button>
+
+        <!-- 提交任务 -->
+        <button class="h-7 px-3 bg-primary text-white text-caption font-medium rounded-md hover:bg-primary-hover active:bg-primary-active transition-colors flex items-center gap-1">
+          {{ t('project.submitTask') }}
+          <ChevronDown class="w-3 h-3" />
+        </button>
+
+        <!-- 图标操作 -->
+        <div class="flex items-center gap-0.5 ml-1">
+          <button class="w-7 h-7 flex items-center justify-center rounded-md text-text-secondary hover:bg-surface-muted transition-colors relative">
+            <Bell class="w-4 h-4" />
+            <span class="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 bg-danger text-white text-micro rounded-full flex items-center justify-center">12</span>
+          </button>
+          <button class="w-7 h-7 flex items-center justify-center rounded-md text-text-secondary hover:bg-surface-muted transition-colors">
+            <HelpCircle class="w-4 h-4" />
+          </button>
+          <button class="w-7 h-7 flex items-center justify-center rounded-md text-text-secondary hover:bg-surface-muted transition-colors">
+            <Settings class="w-4 h-4" />
+          </button>
+        </div>
+
+        <!-- 用户头像 -->
+        <div class="flex items-center gap-1.5 ml-1 pl-2 border-l border-border">
+          <div class="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center text-caption font-medium text-primary">张</div>
+          <span class="text-caption text-text">张三</span>
+          <ChevronDown class="w-3 h-3 text-text-muted" />
+        </div>
       </div>
     </header>
 
-    <!-- 主要工作区 -->
+    <!-- ═══ 状态统计栏 ═══ -->
+    <div class="h-16 bg-surface border-b border-border flex items-center px-6 shrink-0 gap-8">
+      <!-- 任务进度 -->
+      <div class="flex-1 max-w-48">
+        <div class="text-micro text-text-tertiary mb-1">{{ t('project.taskProgress') }}</div>
+        <div class="flex items-center gap-2">
+          <div class="flex-1 h-1.5 bg-surface-alt rounded-full overflow-hidden">
+            <div class="h-full bg-primary rounded-full" style="width: 68%"></div>
+          </div>
+          <span class="text-body-medium text-text">68%</span>
+        </div>
+        <div class="text-micro text-text-muted mt-0.5">340 / 500</div>
+      </div>
+
+      <!-- 图片进度 -->
+      <div class="max-w-32">
+        <div class="text-micro text-text-tertiary mb-1">{{ t('project.imageProgress') }}</div>
+        <div class="text-heading text-text">12 <span class="text-text-muted text-body">/</span> 50</div>
+      </div>
+
+      <!-- 当前图片 -->
+      <div class="max-w-32">
+        <div class="text-micro text-text-tertiary mb-1">{{ t('project.currentImage') }}</div>
+        <div class="text-heading text-text">12 <span class="text-text-muted text-body">/</span> 200</div>
+      </div>
+
+      <!-- 标注时长 -->
+      <div class="max-w-32">
+        <div class="text-micro text-text-tertiary mb-1">{{ t('project.annotationTime') }}</div>
+        <div class="text-heading font-mono text-text">01:23:45</div>
+      </div>
+
+      <!-- 保存状态 -->
+      <div class="max-w-40">
+        <div class="text-micro text-text-tertiary mb-1">{{ t('annotation.saveStatus.saved') }}</div>
+        <div class="flex items-center gap-1.5">
+          <span
+            :class="[
+              'w-2 h-2 rounded-full shrink-0',
+              saveStatus === 'saved' ? 'bg-success' : '',
+              saveStatus === 'dirty' || saveStatus === 'autosave_pending' ? 'bg-warning' : '',
+              saveStatus === 'autosaving' || saveStatus === 'manual_saving' ? 'bg-primary animate-pulse' : '',
+              saveStatus === 'autosave_failed' || saveStatus === 'conflict' ? 'bg-danger' : '',
+              saveStatus === 'readonly' ? 'bg-text-muted' : '',
+            ]"
+          />
+          <span class="text-body text-text">
+            {{ saveStatus === 'saved' ? '自动保存中' : t(`annotation.saveStatus.${saveStatus}`) }}
+          </span>
+        </div>
+        <div class="text-micro text-text-muted mt-0.5">最后保存 10:23:45</div>
+      </div>
+
+      <!-- Revision -->
+      <div class="max-w-24">
+        <div class="text-micro text-text-tertiary mb-1">{{ t('project.revision') }}</div>
+        <div class="text-heading text-text">12</div>
+        <div class="text-micro text-primary">base: 11</div>
+      </div>
+    </div>
+
+    <!-- ═══ 主要工作区 ═══ -->
     <div class="flex-1 flex overflow-hidden">
-      <!-- 左侧任务队列 -->
-      <aside class="w-64 bg-surface border-r border-border shrink-0 overflow-y-auto">
+      <!-- 左侧面板 -->
+      <aside class="w-64 bg-surface border-r border-border shrink-0 overflow-y-auto flex flex-col">
         <slot name="queue">
-          <div class="p-4">
-            <h3 class="text-sm font-medium text-text mb-2">{{ t('workspace.taskQueue') }}</h3>
-            <p class="text-xs text-muted">{{ t('common.loading') }}</p>
+          <div class="p-3">
+            <h3 class="text-body-medium text-text mb-2">{{ t('workspace.taskQueue') }}</h3>
+            <p class="text-caption text-text-muted">{{ t('common.loading') }}</p>
           </div>
         </slot>
       </aside>
 
       <!-- 中间画布区 -->
-      <main class="flex-1 bg-background relative overflow-hidden">
+      <main class="flex-1 bg-bg-canvas relative overflow-hidden flex flex-col">
         <router-view />
       </main>
 
-      <!-- 右侧属性/QC 面板 -->
-      <aside class="w-72 bg-surface border-l border-border shrink-0 overflow-y-auto">
+      <!-- 右侧属性面板 -->
+      <aside class="w-72 bg-surface border-l border-border shrink-0 overflow-y-auto flex flex-col">
         <slot name="panel">
-          <div class="p-4">
-            <h3 class="text-sm font-medium text-text mb-2">{{ t('workspace.propertiesPanel') }}</h3>
-            <p class="text-xs text-muted">{{ t('common.loading') }}</p>
+          <div class="p-3">
+            <h3 class="text-body-medium text-text mb-2">{{ t('workspace.propertiesPanel') }}</h3>
+            <p class="text-caption text-text-muted">{{ t('common.loading') }}</p>
           </div>
         </slot>
       </aside>
     </div>
 
-    <!-- 底部 revision/任务日志 -->
-    <footer class="h-8 bg-surface border-t border-border flex items-center px-4 shrink-0">
+    <!-- ═══ 底部状态栏 ═══ -->
+    <footer class="h-8 bg-surface border-t border-border flex items-center px-4 shrink-0 text-micro text-text-tertiary gap-6 z-sticky">
       <slot name="footer">
-        <span class="text-xs text-muted">{{ t('workspace.revisionLog') }}</span>
+        <div class="flex items-center gap-1.5">
+          <span class="w-1.5 h-1.5 rounded-full bg-success"></span>
+          {{ t('workspace.autoSaveOn') }}
+        </div>
+        <span>{{ t('workspace.autoSaveInterval') }}</span>
+        <span class="ml-auto">{{ t('workspace.currentUser') }}：张三（标注员）</span>
+        <div class="flex items-center gap-1.5">
+          {{ t('workspace.networkStatus') }}：
+          <span class="w-1.5 h-1.5 rounded-full bg-success"></span>
+          {{ t('workspace.networkGood') }}
+        </div>
+        <span>{{ t('workspace.timezone') }}：{{ t('workspace.timezoneValue') }}</span>
       </slot>
     </footer>
   </div>

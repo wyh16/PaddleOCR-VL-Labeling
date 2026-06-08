@@ -1,12 +1,25 @@
 <script setup lang="ts">
 /**
  * 应用主布局
- * 负责工作台通用框架，包括侧边栏、顶部状态区、主内容区
+ * 提供全局框架：左侧导航栏、顶部栏、主内容区
+ * 规范：frontend_component_library_spec.md §6 AppShell
  */
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { useAuth } from '@/composables/useAuth'
-import BaseButton from '@/components/base/BaseButton.vue'
+import {
+  LayoutDashboard,
+  FolderKanban,
+  ClipboardList,
+  Database,
+  PenTool,
+  ShieldCheck,
+  Download,
+  Users,
+  Settings,
+  LogOut,
+  ChevronDown,
+} from 'lucide-vue-next'
 
 const { t } = useI18n()
 const router = useRouter()
@@ -16,51 +29,106 @@ async function handleLogout() {
   await logout()
   router.replace({ name: 'auth.login' })
 }
+
+interface NavItem {
+  key: string
+  icon: typeof LayoutDashboard
+  routeName?: string
+  disabled?: boolean
+}
+
+const navItems: NavItem[] = [
+  { key: 'dashboard', icon: LayoutDashboard, disabled: true },
+  { key: 'projects', icon: FolderKanban, routeName: 'projects.index' },
+  { key: 'tasks', icon: ClipboardList, disabled: true },
+  { key: 'datasets', icon: Database, disabled: true },
+  { key: 'workspace', icon: PenTool, disabled: true },
+  { key: 'qc', icon: ShieldCheck, disabled: true },
+  { key: 'exports', icon: Download, disabled: true },
+  { key: 'users', icon: Users, disabled: true },
+  { key: 'settings', icon: Settings, routeName: 'settings.index' },
+]
 </script>
 
 <template>
-  <div class="min-h-screen flex">
-    <!-- 侧边栏 -->
-    <aside class="w-64 bg-surface border-r border-border flex flex-col">
-      <div class="p-4 border-b border-border">
-        <h1 class="text-lg font-bold text-text">{{ t('routes.app.home') }}</h1>
+  <div class="h-screen flex overflow-hidden bg-bg-app">
+    <!-- 左侧导航栏 -->
+    <aside class="w-56 bg-surface border-r border-border flex flex-col shrink-0 z-sticky">
+      <!-- Logo -->
+      <div class="h-12 flex items-center px-4 border-b border-border shrink-0">
+        <div class="flex items-center gap-2">
+          <div class="w-6 h-6 bg-primary rounded-md flex items-center justify-center">
+            <PenTool class="w-3.5 h-3.5 text-white" />
+          </div>
+          <span class="text-body-medium text-text">数据标注平台</span>
+        </div>
       </div>
 
-      <nav class="flex-1 p-4 space-y-2">
-        <router-link
-          :to="{ name: 'projects.index' }"
-          class="block px-3 py-2 rounded-md text-text hover:bg-background"
-          active-class="bg-background"
-        >
-          {{ t('routes.projects.index') }}
-        </router-link>
-
-        <router-link
-          :to="{ name: 'settings.index' }"
-          class="block px-3 py-2 rounded-md text-text hover:bg-background"
-          active-class="bg-background"
-        >
-          {{ t('routes.settings.index') }}
-        </router-link>
+      <!-- 导航项 -->
+      <nav class="flex-1 py-2 px-2 space-y-0.5 overflow-y-auto" role="navigation">
+        <template v-for="item in navItems" :key="item.key">
+          <router-link
+            v-if="item.routeName"
+            :to="{ name: item.routeName }"
+            :class="[
+              'flex items-center gap-2.5 px-3 py-2 rounded-md text-body transition-colors',
+              'text-text-secondary hover:bg-surface-muted hover:text-text',
+              $route.name === item.routeName ? 'bg-primary/8 text-primary font-medium' : '',
+            ]"
+          >
+            <component :is="item.icon" class="w-4 h-4 shrink-0" />
+            <span>{{ t(`nav.${item.key}`) }}</span>
+          </router-link>
+          <span
+            v-else
+            :class="[
+              'flex items-center gap-2.5 px-3 py-2 rounded-md text-body',
+              'text-text-muted cursor-not-allowed',
+            ]"
+            aria-disabled="true"
+          >
+            <component :is="item.icon" class="w-4 h-4 shrink-0" />
+            <span>{{ t(`nav.${item.key}`) }}</span>
+          </span>
+        </template>
       </nav>
 
-      <div class="p-4 border-t border-border">
-        <div v-if="user" class="text-sm text-muted mb-2">
-          {{ user.username }}
+      <!-- 当前项目 -->
+      <div class="px-3 py-2 border-t border-border">
+        <div class="text-micro text-text-muted mb-1">{{ t('project.currentProject') }}</div>
+        <button class="flex items-center justify-between w-full px-2 py-1.5 rounded-md text-caption text-text hover:bg-surface-muted transition-colors">
+          <span class="truncate">小学数学试卷项目</span>
+          <ChevronDown class="w-3.5 h-3.5 shrink-0 text-text-muted" />
+        </button>
+      </div>
+
+      <!-- 用户信息 -->
+      <div class="px-3 py-3 border-t border-border">
+        <div class="flex items-center gap-2.5">
+          <div class="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-caption font-medium text-primary">
+            {{ user?.username?.charAt(0)?.toUpperCase() || 'U' }}
+          </div>
+          <div class="flex-1 min-w-0">
+            <div class="text-body-medium text-text truncate">{{ user?.username || 'User' }}</div>
+            <div class="flex items-center gap-1 text-micro text-success">
+              <span class="w-1.5 h-1.5 rounded-full bg-success"></span>
+              {{ t('workspace.online') }}
+            </div>
+          </div>
+          <button
+            class="p-1.5 rounded-md text-text-muted hover:text-danger hover:bg-danger-bg transition-colors"
+            :aria-label="t('auth.logout')"
+            @click="handleLogout"
+          >
+            <LogOut class="w-4 h-4" />
+          </button>
         </div>
-        <BaseButton
-          variant="secondary"
-          size="sm"
-          class="w-full"
-          @click="handleLogout"
-        >
-          {{ t('auth.logout') }}
-        </BaseButton>
+        <div class="text-micro text-text-muted mt-1.5 pl-10.5">标注员</div>
       </div>
     </aside>
 
-    <!-- 主内容区 -->
-    <main class="flex-1 overflow-auto">
+    <!-- 右侧主内容区 -->
+    <main class="flex-1 flex flex-col overflow-hidden">
       <router-view />
     </main>
   </div>
