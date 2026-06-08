@@ -14,6 +14,7 @@
 import { ref, provide, onMounted, onUnmounted } from 'vue'
 import { useRouter, type RouteLocationNormalized } from 'vue-router'
 import { useI18n } from 'vue-i18n'
+import { useAuth } from '@/composables/useAuth'
 import {
   Search,
   Keyboard,
@@ -25,6 +26,7 @@ import {
 
 const { t } = useI18n()
 const router = useRouter()
+const { user } = useAuth()
 
 // ── 保存状态 ──
 type SaveStatus = 'saved' | 'dirty' | 'autosave_pending' | 'autosaving' | 'autosave_failed' | 'manual_saving' | 'conflict' | 'readonly'
@@ -77,9 +79,9 @@ onUnmounted(() => {
           {{ t('nav.projects') }}
         </router-link>
         <span class="text-text-muted">/</span>
-        <span class="text-text truncate max-w-48">小学数学试卷项目</span>
+        <span class="text-text truncate max-w-48">{{ t('common.loading') }}</span>
         <span class="text-text-muted">/</span>
-        <span class="text-text truncate max-w-48">任务-20240527-001</span>
+        <span class="text-text truncate max-w-48">{{ t('common.loading') }}</span>
         <span class="text-text-muted">/</span>
         <span class="text-text font-medium">{{ pageTitle || t('routes.pages.workspace') }}</span>
       </nav>
@@ -127,8 +129,8 @@ onUnmounted(() => {
 
         <!-- 用户头像 -->
         <div class="flex items-center gap-1.5 ml-1 pl-2 border-l border-border">
-          <div class="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center text-caption font-medium text-primary">张</div>
-          <span class="text-caption text-text">张三</span>
+          <div class="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center text-caption font-medium text-primary">{{ user?.username?.charAt(0)?.toUpperCase() || 'U' }}</div>
+          <span class="text-caption text-text">{{ user?.username || 'User' }}</span>
           <ChevronDown class="w-3 h-3 text-text-muted" />
         </div>
       </div>
@@ -181,10 +183,10 @@ onUnmounted(() => {
             ]"
           />
           <span class="text-body text-text">
-            {{ saveStatus === 'saved' ? '自动保存中' : t(`annotation.saveStatus.${saveStatus}`) }}
+            {{ t(`annotation.saveStatus.${saveStatus}`) }}
           </span>
         </div>
-        <div class="text-micro text-text-muted mt-0.5">最后保存 10:23:45</div>
+        <div class="text-micro text-text-muted mt-0.5">{{ t('workspace.lastSaved', { time: '--:--:--' }) }}</div>
       </div>
 
       <!-- Revision -->
@@ -231,7 +233,7 @@ onUnmounted(() => {
           {{ t('workspace.autoSaveOn') }}
         </div>
         <span>{{ t('workspace.autoSaveInterval') }}</span>
-        <span class="ml-auto">{{ t('workspace.currentUser') }}：张三（标注员）</span>
+        <span class="ml-auto">{{ t('workspace.currentUser') }}：{{ user?.username || 'User' }}（{{ t('workspace.roleAnnotator') }}）</span>
         <div class="flex items-center gap-1.5">
           {{ t('workspace.networkStatus') }}：
           <span class="w-1.5 h-1.5 rounded-full bg-success"></span>

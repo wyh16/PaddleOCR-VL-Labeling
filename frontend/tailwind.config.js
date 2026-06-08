@@ -35,6 +35,10 @@ export default {
           hover: 'var(--color-primary-hover)',
           active: 'var(--color-primary-active)',
         },
+        link: {
+          DEFAULT: 'var(--color-link)',
+          hover: 'var(--color-link-hover)',
+        },
         focus: 'var(--color-focus-ring)',
         /* 语义颜色 */
         success: {
@@ -68,8 +72,8 @@ export default {
         muted: 'var(--color-muted)',
       },
       fontFamily: {
-        sans: ['Inter', 'IBM Plex Sans', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'sans-serif'],
-        mono: ['JetBrains Mono', 'ui-monospace', 'SFMono-Regular', 'Consolas', 'monospace'],
+        sans: ['Inter', 'Geist', 'IBM Plex Sans', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'sans-serif'],
+        mono: ['JetBrains Mono', 'Geist Mono', 'ui-monospace', 'SFMono-Regular', 'Consolas', 'monospace'],
       },
       fontSize: {
         'display': ['32px', { lineHeight: '1.25', fontWeight: '600' }],
@@ -80,6 +84,7 @@ export default {
         'body-medium': ['14px', { lineHeight: '1.50', fontWeight: '500' }],
         'caption': ['12px', { lineHeight: '1.40', fontWeight: '400' }],
         'micro': ['11px', { lineHeight: '1.30', fontWeight: '500' }],
+        'mono': ['12px', { lineHeight: '1.45', fontWeight: '400' }],
       },
       borderRadius: {
         'none': '0px',
@@ -117,9 +122,9 @@ export default {
         'sticky': '10',
         'toolbar': '20',
         'dropdown': '30',
-        'drawer': '40',
-        'modal': '50',
-        'toast': '60',
+        'drawer': '35',
+        'modal': '40',
+        'toast': '50',
       },
       transitionDuration: {
         'fast': '120ms',

@@ -88,15 +88,15 @@ const rightPanelTabs = computed(() => [
 ])
 
 // ── 标签数据（mock） ──
-const labels = [
-  { name: '题目', color: '#5e6ad2', count: 124, visible: true },
-  { name: '答案区域', color: '#24a148', count: 356, visible: true },
-  { name: '选项区域', color: '#0f62fe', count: 89, visible: true },
-  { name: '图像区域', color: '#da1e28', count: 45, visible: true },
-  { name: '公式', color: '#dd5b00', count: 23, visible: true },
-  { name: '表格', color: '#0f62fe', count: 12, visible: true },
-  { name: '其他', color: '#8c8c8c', count: 8, visible: true },
-]
+const labels = computed(() => [
+  { key: 'question', color: '#5e6ad2', count: 124, visible: true },
+  { key: 'answerArea', color: '#24a148', count: 356, visible: true },
+  { key: 'optionArea', color: '#0f62fe', count: 89, visible: true },
+  { key: 'imageArea', color: '#da1e28', count: 45, visible: true },
+  { key: 'formula', color: '#dd5b00', count: 23, visible: true },
+  { key: 'table', color: '#0f62fe', count: 12, visible: true },
+  { key: 'other', color: '#8c8c8c', count: 8, visible: true },
+])
 
 // ── 页面缩略图（mock） ──
 const currentPageIndex = ref(11)
@@ -371,13 +371,13 @@ onMounted(() => { loadWorkspace() })
 
             <!-- Mock overlay boxes -->
             <div class="absolute top-1/4 left-1/3 w-48 border-2 border-overlay-manual rounded-sm pointer-events-none">
-              <span class="absolute -top-5 left-0 text-micro bg-overlay-manual text-white px-1 py-0.5 rounded-sm">题目</span>
+              <span class="absolute -top-5 left-0 text-micro bg-overlay-manual text-white px-1 py-0.5 rounded-sm">{{ t('annotation.labels.question') }}</span>
             </div>
             <div class="absolute top-[45%] left-1/4 w-64 border-2 border-overlay-manual rounded-sm pointer-events-none">
-              <span class="absolute -top-5 left-0 text-micro bg-success text-white px-1 py-0.5 rounded-sm">答案区域</span>
+              <span class="absolute -top-5 left-0 text-micro bg-success text-white px-1 py-0.5 rounded-sm">{{ t('annotation.labels.answerArea') }}</span>
             </div>
             <div class="absolute top-[65%] left-1/4 w-56 border-2 border-overlay-candidate rounded-sm pointer-events-none">
-              <span class="absolute -top-5 left-0 text-micro bg-info text-white px-1 py-0.5 rounded-sm">选项区域</span>
+              <span class="absolute -top-5 left-0 text-micro bg-info text-white px-1 py-0.5 rounded-sm">{{ t('annotation.labels.optionArea') }}</span>
             </div>
           </div>
         </div>
@@ -402,12 +402,12 @@ onMounted(() => { loadWorkspace() })
               <div class="space-y-1">
                 <div
                   v-for="label in labels"
-                  :key="label.name"
+                  :key="label.key"
                   class="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-surface-muted transition-colors cursor-pointer"
                 >
                   <input type="checkbox" :checked="label.visible" class="w-3.5 h-3.5 rounded border-border-strong text-primary focus:ring-focus" />
                   <span class="w-3 h-3 rounded-sm shrink-0" :style="{ backgroundColor: label.color }"></span>
-                  <span class="flex-1 text-body text-text truncate">{{ label.name }}</span>
+                  <span class="flex-1 text-body text-text truncate">{{ t(`annotation.labels.${label.key}`) }}</span>
                   <span class="text-caption text-text-muted">{{ label.count }}</span>
                   <button class="p-0.5 rounded text-text-muted hover:text-text transition-colors" aria-label="Show">
                     <Eye class="w-3.5 h-3.5" />
@@ -438,9 +438,9 @@ onMounted(() => { loadWorkspace() })
               <div>
                 <label class="text-micro text-text-tertiary block mb-1">{{ t('annotation.properties.label') }}</label>
                 <select class="w-full h-7 px-2 text-caption bg-surface border border-border rounded-md text-text focus:outline-none focus:ring-2 focus:ring-focus">
-                  <option>题目</option>
-                  <option>答案区域</option>
-                  <option>选项区域</option>
+                  <option>{{ t('annotation.labels.question') }}</option>
+                  <option>{{ t('annotation.labels.answerArea') }}</option>
+                  <option>{{ t('annotation.labels.optionArea') }}</option>
                 </select>
               </div>
               <div>

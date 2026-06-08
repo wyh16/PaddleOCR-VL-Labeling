@@ -15,12 +15,16 @@ export default {
     back: 'Back',
     submit: 'Submit',
     close: 'Close',
+    remove: 'Remove',
     undo: 'Undo',
     redo: 'Redo',
     redo_action: 'Redo',
     undo_action: 'Undo',
     searchPlaceholder: 'Search projects, tasks, files...',
     shortcutHint: '⌘K',
+  },
+  app: {
+    logoName: 'Data Labeling',
   },
   auth: {
     login: 'Login',
@@ -52,6 +56,7 @@ export default {
     name: 'Project Name',
     description: 'Description',
     status: 'Status',
+    statusInProject: 'In Progress',
     actions: 'Actions',
     currentProject: 'Current Project',
     taskProgress: 'Task Progress',
@@ -146,9 +151,15 @@ export default {
     networkGood: 'Good',
     timezone: 'Timezone',
     timezoneValue: 'Asia/Shanghai',
+    lastSaved: 'Last saved {time}',
+    roleAnnotator: 'Annotator',
   },
   settings: {
     language: 'Language',
+    personalInfo: 'Personal Info',
+    notifications: 'Notifications',
+    security: 'Security',
+    noConfigItems: 'No configurable items',
   },
   routes: {
     auth: {

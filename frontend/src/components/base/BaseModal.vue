@@ -6,6 +6,9 @@
  */
 import { ref, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { X } from 'lucide-vue-next'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 interface Props {
   open: boolean
@@ -76,7 +79,7 @@ onUnmounted(() => { document.removeEventListener('keydown', handleKeydown) })
             <button
               v-if="closable"
               class="p-1 rounded-md text-text-muted hover:text-text hover:bg-surface-muted transition-colors ml-auto"
-              aria-label="Close"
+              :aria-label="t('common.close')"
               @click="emit('close')"
             >
               <X class="w-4 h-4" />

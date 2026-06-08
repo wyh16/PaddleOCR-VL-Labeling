@@ -5,7 +5,10 @@
  * 规范：frontend_component_library_spec.md §5.8
  */
 import { CircleCheck, CircleAlert, Info, X } from 'lucide-vue-next'
+import { useI18n } from 'vue-i18n'
 import { useToast, type Toast } from '@/composables/useToast'
+
+const { t } = useI18n()
 
 const { toasts, removeToast } = useToast()
 
@@ -41,7 +44,7 @@ const variantClasses: Record<Toast['type'], string> = {
           <span class="flex-1">{{ toast.message }}</span>
           <button
             class="shrink-0 p-0.5 rounded hover:bg-black/10 transition-colors"
-            aria-label="Close"
+            :aria-label="t('common.close')"
             @click="removeToast(toast.id)"
           >
             <X class="w-3.5 h-3.5" />

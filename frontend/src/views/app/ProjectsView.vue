@@ -105,7 +105,7 @@ function goToProject(projectId: string) {
             <!-- Mock status badge -->
             <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm bg-success-bg text-success text-micro font-medium">
               <span class="w-1.5 h-1.5 rounded-full bg-success"></span>
-              进行中
+              {{ t('project.statusInProject') }}
             </span>
           </div>
         </div>

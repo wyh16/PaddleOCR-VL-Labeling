@@ -15,12 +15,16 @@ export default {
     back: '返回',
     submit: '提交',
     close: '关闭',
+    remove: '移除',
     undo: '撤销',
     redo: '重做',
     redo_action: '重做',
     undo_action: '撤销',
     searchPlaceholder: '搜索项目、任务、文件等',
     shortcutHint: '⌘K',
+  },
+  app: {
+    logoName: '数据标注平台',
   },
   auth: {
     login: '登录',
@@ -52,6 +56,7 @@ export default {
     name: '项目名称',
     description: '项目描述',
     status: '状态',
+    statusInProject: '进行中',
     actions: '操作',
     currentProject: '当前项目',
     taskProgress: '任务进度',
@@ -146,9 +151,15 @@ export default {
     networkGood: '良好',
     timezone: '项目时区',
     timezoneValue: 'Asia/Shanghai',
+    lastSaved: '最后保存 {time}',
+    roleAnnotator: '标注员',
   },
   settings: {
     language: '语言',
+    personalInfo: '个人信息',
+    notifications: '通知设置',
+    security: '安全设置',
+    noConfigItems: '暂无可配置项',
   },
   routes: {
     auth: {

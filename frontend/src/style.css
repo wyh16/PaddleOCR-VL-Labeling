@@ -27,6 +27,8 @@
   --color-primary: #5e6ad2;
   --color-primary-hover: #828fff;
   --color-primary-active: #5e69d1;
+  --color-link: #0f62fe;
+  --color-link-hover: #0050e6;
   --color-focus-ring: #5e69d1;
 
   /* ── 语义颜色 ── */
@@ -74,6 +76,8 @@
   --color-primary: #7b83eb;
   --color-primary-hover: #9ba3f0;
   --color-primary-active: #6b73d9;
+  --color-link: #4589ff;
+  --color-link-hover: #78a9ff;
   --color-focus-ring: #7b83eb;
 
   --color-success: #42be65;
@@ -103,14 +107,14 @@ body {
   color: var(--color-text);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  font-family: 'Inter', 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: 'Inter', 'Geist', 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   font-size: 14px;
   line-height: 1.5;
   margin: 0;
 }
 
 code, pre, .font-mono {
-  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-family: 'JetBrains Mono', 'Geist Mono', ui-monospace, SFMono-Regular, Consolas, monospace;
 }
 
 /* ── 全局滚动条 ── */

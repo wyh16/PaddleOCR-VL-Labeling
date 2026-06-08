@@ -5,6 +5,9 @@
  * 规范：frontend_component_library_spec.md §5.4
  */
 import { X } from 'lucide-vue-next'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 interface Props {
   color?: string
@@ -33,7 +36,7 @@ const emit = defineEmits<{
     <button
       v-if="closable"
       class="ml-0.5 rounded hover:bg-surface-strong p-0.5 transition-colors"
-      :aria-label="'Remove'"
+      :aria-label="t('common.remove')"
       @click.stop="emit('close')"
     >
       <X class="w-3 h-3" />

@@ -60,7 +60,7 @@ const navItems: NavItem[] = [
           <div class="w-6 h-6 bg-primary rounded-md flex items-center justify-center">
             <PenTool class="w-3.5 h-3.5 text-white" />
           </div>
-          <span class="text-body-medium text-text">数据标注平台</span>
+          <span class="text-body-medium text-text">{{ t('app.logoName') }}</span>
         </div>
       </div>
 
@@ -97,7 +97,7 @@ const navItems: NavItem[] = [
       <div class="px-3 py-2 border-t border-border">
         <div class="text-micro text-text-muted mb-1">{{ t('project.currentProject') }}</div>
         <button class="flex items-center justify-between w-full px-2 py-1.5 rounded-md text-caption text-text hover:bg-surface-muted transition-colors">
-          <span class="truncate">小学数学试卷项目</span>
+          <span class="truncate">{{ user?.username ? t('common.loading') : t('common.loading') }}</span>
           <ChevronDown class="w-3.5 h-3.5 shrink-0 text-text-muted" />
         </button>
       </div>
@@ -123,7 +123,7 @@ const navItems: NavItem[] = [
             <LogOut class="w-4 h-4" />
           </button>
         </div>
-        <div class="text-micro text-text-muted mt-1.5 pl-10.5">标注员</div>
+        <div class="text-micro text-text-muted mt-1.5 pl-10.5">{{ t('workspace.roleAnnotator') }}</div>
       </div>
     </aside>
 

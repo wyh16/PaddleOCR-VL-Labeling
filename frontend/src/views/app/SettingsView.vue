@@ -52,7 +52,7 @@ function changeLocale(lang: string) {
         <section class="bg-surface rounded-lg border border-border p-5">
           <div class="flex items-center gap-2.5 mb-4">
             <User class="w-4 h-4 text-primary" />
-            <h2 class="text-subheading text-text">个人信息</h2>
+            <h2 class="text-subheading text-text">{{ t('settings.personalInfo') }}</h2>
           </div>
           <div class="max-w-md space-y-4">
             <BaseInput :label="t('auth.username')" model-value="" :placeholder="t('auth.username')" readonly />
@@ -64,18 +64,18 @@ function changeLocale(lang: string) {
         <section class="bg-surface rounded-lg border border-border p-5">
           <div class="flex items-center gap-2.5 mb-4">
             <Bell class="w-4 h-4 text-primary" />
-            <h2 class="text-subheading text-text">通知设置</h2>
+            <h2 class="text-subheading text-text">{{ t('settings.notifications') }}</h2>
           </div>
-          <p class="text-caption text-text-muted">暂无可配置项</p>
+          <p class="text-caption text-text-muted">{{ t('settings.noConfigItems') }}</p>
         </section>
 
         <!-- 安全设置 -->
         <section class="bg-surface rounded-lg border border-border p-5">
           <div class="flex items-center gap-2.5 mb-4">
             <Shield class="w-4 h-4 text-primary" />
-            <h2 class="text-subheading text-text">安全设置</h2>
+            <h2 class="text-subheading text-text">{{ t('settings.security') }}</h2>
           </div>
-          <p class="text-caption text-text-muted">暂无可配置项</p>
+          <p class="text-caption text-text-muted">{{ t('settings.noConfigItems') }}</p>
         </section>
       </div>
     </div>

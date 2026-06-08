@@ -22,8 +22,8 @@ async function handleRegister() {
 </script>
 
 <template>
-  <div class="bg-background rounded-lg shadow-lg p-8">
-    <h1 class="text-2xl font-bold text-center mb-6">{{ t('auth.register') }}</h1>
+  <div class="bg-surface rounded-lg shadow-modal p-8">
+    <h1 class="text-title text-center mb-6">{{ t('auth.register') }}</h1>
 
     <form @submit.prevent="handleRegister" class="space-y-4">
       <div
@@ -68,9 +68,9 @@ async function handleRegister() {
       </BaseButton>
     </form>
 
-    <p class="mt-4 text-center text-sm text-muted">
+    <p class="mt-4 text-center text-sm text-text-muted">
       {{ t('auth.hasAccount') }}
-      <router-link :to="{ name: 'auth.login' }" class="text-accent hover:underline">
+      <router-link :to="{ name: 'auth.login' }" class="text-link hover:underline">
         {{ t('auth.login') }}
       </router-link>
     </p>

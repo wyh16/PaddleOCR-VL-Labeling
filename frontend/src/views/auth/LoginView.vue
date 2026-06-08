@@ -68,8 +68,8 @@ async function handleLogin() {
 </script>
 
 <template>
-  <div class="bg-background rounded-lg shadow-lg p-8">
-    <h1 class="text-2xl font-bold text-center mb-6">{{ t('auth.login') }}</h1>
+  <div class="bg-surface rounded-lg shadow-modal p-8">
+    <h1 class="text-title text-center mb-6">{{ t('auth.login') }}</h1>
 
     <form @submit.prevent="handleLogin" class="space-y-4">
       <div v-if="error" class="p-3 bg-danger/10 text-danger text-sm rounded-md">
@@ -102,9 +102,9 @@ async function handleLogin() {
       </BaseButton>
     </form>
 
-    <p class="mt-4 text-center text-sm text-muted">
+    <p class="mt-4 text-center text-sm text-text-muted">
       {{ t('auth.noAccount') }}
-      <router-link :to="{ name: 'auth.register' }" class="text-accent hover:underline">
+      <router-link :to="{ name: 'auth.register' }" class="text-link hover:underline">
         {{ t('auth.register') }}
       </router-link>
     </p>
