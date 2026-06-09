@@ -1,10 +1,13 @@
 <script setup lang="ts">
 /**
- * 标注画布组件
- * 图片 + SVG overlay + 鼠标交互
+ * 标注画布组件（Canvas 矩阵渲染架构）
+ *
+ * 渲染层：固定视口 Canvas（setTransform 矩阵渲染）
+ * 交互层：SVG overlay（viewBox 与 Canvas 逻辑尺寸一致）
+ * 标注层：BBoxOverlay（视口坐标系）
  */
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
-import { useCanvasTransform } from '@/composables/useCanvasTransform'
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import { useCanvasRenderer } from '@/composables/useCanvasRenderer'
 import { useAnnotationStore } from '@/composables/useAnnotationStore'
 import BBoxOverlay from './BBoxOverlay.vue'
 
@@ -22,14 +25,14 @@ const emit = defineEmits<{
   'objects-changed': []
 }>()
 
-// ── 暴露 store 给父组件 ──
+// ── 核心依赖 ──
 const store = useAnnotationStore()
-const transform = useCanvasTransform()
+const renderer = useCanvasRenderer()
 
-defineExpose({ store, transform })
+defineExpose({ store, renderer, redraw })
 
-// ── 容器和图片引用 ──
-const containerRef = ref<HTMLElement | null>(null)
+// ── DOM 引用 ──
+const canvasRef = ref<HTMLCanvasElement | null>(null)
 const imageLoaded = ref(false)
 
 // ── 鼠标交互状态 ──
@@ -39,76 +42,86 @@ const dragStartScreen = ref({ x: 0, y: 0 })
 const dragStartImage = ref({ x: 0, y: 0 })
 const dragHandleIndex = ref(0)
 const dragObjectId = ref<string | null>(null)
-const drawStartImage = ref({ x: 0, y: 0 })
+const drawStartViewport = ref({ x: 0, y: 0 })
 
-// ── 画框临时矩形 ──
+// ── 画框临时矩形（视口坐标） ──
 const tempRect = ref<{ x: number; y: number; w: number; h: number } | null>(null)
 
-// ── 图片加载 ──
-watch(() => props.imageUrl, (url) => {
-  if (!url) return
-  imageLoaded.value = false
-  const img = new Image()
-  img.onload = () => {
-    transform.setImageSize(img.naturalWidth, img.naturalHeight)
-    imageLoaded.value = true
-    // 延迟到下一帧确保容器尺寸已更新
-    requestAnimationFrame(() => {
-      if (containerRef.value) {
-        const w = containerRef.value.offsetWidth
-        const h = containerRef.value.offsetHeight
-        transform.setContainerSize(w, h)
-        // 自适应容器大小，居中显示
-        transform.fitToContainer()
-        emit('update:zoomLevel', transform.zoomPercent.value)
-      }
-    })
-  }
-  img.src = url
-}, { immediate: true })
+// ── SVG viewBox（与 Canvas 逻辑尺寸一致） ──
+const svgViewBox = computed(() => `0 0 ${renderer.viewport.value.w} ${renderer.viewport.value.h}`)
 
-// ── 容器尺寸监听 ──
-let resizeObserver: ResizeObserver | null = null
-
-onMounted(() => {
-  if (containerRef.value) {
-    transform.setContainerSize(containerRef.value.offsetWidth, containerRef.value.offsetHeight)
-  }
-  resizeObserver = new ResizeObserver((entries) => {
-    const entry = entries[0]
-    if (entry) {
-      transform.setContainerSize(entry.contentRect.width, entry.contentRect.height)
+// ── 将标注对象从原图坐标转换为视口坐标 ──
+const viewportObjects = computed(() => {
+  return store.objects.value.map(obj => {
+    const [xmin, ymin, xmax, ymax] = obj.bbox_xyxy
+    const tl = renderer.imageToViewport(xmin, ymin)
+    const br = renderer.imageToViewport(xmax, ymax)
+    return {
+      ...obj,
+      bbox_xyxy: [tl.x, tl.y, br.x, br.y] as [number, number, number, number],
     }
   })
-  if (containerRef.value) {
-    resizeObserver.observe(containerRef.value)
-  }
 })
 
-onUnmounted(() => {
-  resizeObserver?.disconnect()
-})
+// ── 视口坐标 → 原图坐标（标注存储用） ──
+function viewportToImage(vpX: number, vpY: number) {
+  return renderer.screenToImage(vpX, vpY) ?? { x: vpX, y: vpY }
+}
+
+// ── 渲染 ──
+function redraw() {
+  if (!canvasRef.value) return
+  renderer.render(canvasRef.value)
+}
+
+// ── 图片加载 ──
+watch(() => props.imageUrl, async (url) => {
+  if (!url) return
+  imageLoaded.value = false
+
+  try {
+    await renderer.loadImage(url)
+    imageLoaded.value = true
+
+    await nextTick()
+    if (canvasRef.value) {
+      renderer.initCanvas(canvasRef.value)
+      renderer.fitToContainer()
+      redraw()
+      emit('update:zoomLevel', renderer.zoomPercent.value)
+    }
+  } catch {
+    console.error('图片加载失败')
+  }
+}, { immediate: true })
 
 // ── 滚轮缩放 ──
 function onWheel(e: WheelEvent) {
   e.preventDefault()
+  const canvas = canvasRef.value
+  if (!canvas) return
+
+  const rect = canvas.getBoundingClientRect()
+  const screenX = e.clientX - rect.left
+  const screenY = e.clientY - rect.top
   const delta = e.deltaY > 0 ? -0.1 : 0.1
-  const rect = containerRef.value!.getBoundingClientRect()
-  transform.zoom(delta, {
-    x: e.clientX - rect.left,
-    y: e.clientY - rect.top,
-  })
-  emit('update:zoomLevel', transform.zoomPercent.value)
+
+  renderer.zoomAt(delta, screenX, screenY)
+  redraw()
+  emit('update:zoomLevel', renderer.zoomPercent.value)
 }
 
 // ── 鼠标按下 ──
 function onMouseDown(e: MouseEvent) {
   if (e.button !== 0) return
 
-  const rect = containerRef.value!.getBoundingClientRect()
+  const canvas = canvasRef.value
+  if (!canvas) return
+
+  const rect = canvas.getBoundingClientRect()
   const screenX = e.clientX - rect.left
   const screenY = e.clientY - rect.top
-  const imgPt = transform.screenToImage(screenX, screenY)
+  const imgPt = viewportToImage(screenX, screenY)
 
   dragStartScreen.value = { x: screenX, y: screenY }
   dragStartImage.value = imgPt
@@ -124,15 +137,13 @@ function onMouseDown(e: MouseEvent) {
   if (props.activeTool === 'rectangle') {
     isDragging.value = true
     dragType.value = 'draw'
-    drawStartImage.value = imgPt
-    tempRect.value = { x: imgPt.x, y: imgPt.y, w: 0, h: 0 }
+    drawStartViewport.value = { x: screenX, y: screenY }
+    tempRect.value = { x: screenX, y: screenY, w: 0, h: 0 }
     return
   }
 
   // 选择工具：点击空白取消选中
   if (props.activeTool === 'select') {
-    // 检查是否点击了某个对象（由 BBoxOverlay 的 mousedown 处理）
-    // 如果没点到任何对象，取消选中
     store.select(null)
     emit('object-selected', null)
   }
@@ -142,26 +153,32 @@ function onMouseDown(e: MouseEvent) {
 function onMouseMove(e: MouseEvent) {
   if (!isDragging.value) return
 
-  const rect = containerRef.value!.getBoundingClientRect()
+  const canvas = canvasRef.value
+  if (!canvas) return
+
+  const rect = canvas.getBoundingClientRect()
   const screenX = e.clientX - rect.left
   const screenY = e.clientY - rect.top
-  const imgPt = transform.screenToImage(screenX, screenY)
+  const imgPt = viewportToImage(screenX, screenY)
 
   if (dragType.value === 'pan') {
     const dx = screenX - dragStartScreen.value.x
     const dy = screenY - dragStartScreen.value.y
-    transform.pan(dx, dy)
+    renderer.pan(dx, dy)
+    redraw()
     dragStartScreen.value = { x: screenX, y: screenY }
-    emit('update:zoomLevel', transform.zoomPercent.value)
+    emit('update:zoomLevel', renderer.zoomPercent.value)
     return
   }
 
   if (dragType.value === 'draw' && tempRect.value) {
+    const sx = drawStartViewport.value.x
+    const sy = drawStartViewport.value.y
     tempRect.value = {
-      x: Math.min(drawStartImage.value.x, imgPt.x),
-      y: Math.min(drawStartImage.value.y, imgPt.y),
-      w: Math.abs(imgPt.x - drawStartImage.value.x),
-      h: Math.abs(imgPt.y - drawStartImage.value.y),
+      x: Math.min(sx, screenX),
+      y: Math.min(sy, screenY),
+      w: Math.abs(screenX - sx),
+      h: Math.abs(screenY - sy),
     }
     return
   }
@@ -186,9 +203,12 @@ function onMouseMove(e: MouseEvent) {
 function onMouseUp() {
   if (dragType.value === 'draw' && tempRect.value) {
     const { x, y, w, h } = tempRect.value
-    // 最小面积检查
-    if (w > 5 && h > 5) {
-      store.addObject([x, y, x + w, y + h], props.activeLabel)
+    // 最小面积检查（视口坐标像素）
+    if (w > 3 && h > 3) {
+      // 将画框的两个对角点从视口坐标转回原图坐标后存储
+      const topLeft = viewportToImage(x, y)
+      const bottomRight = viewportToImage(x + w, y + h)
+      store.addObject([topLeft.x, topLeft.y, bottomRight.x, bottomRight.y], props.activeLabel)
       emit('objects-changed')
     }
     tempRect.value = null
@@ -204,7 +224,6 @@ function onBBoxSelect(id: string) {
   store.select(id)
   emit('object-selected', id)
 
-  // readingOrder 模式：点击设置阅读顺序
   if (props.activeTool === 'readingOrder') {
     const maxOrder = store.objects.value.reduce((max, o) => Math.max(max, o.read_order), 0)
     store.setReadOrder(id, maxOrder + 1)
@@ -216,10 +235,13 @@ function onBBoxDragStart(id: string, e: MouseEvent) {
   if (props.activeTool !== 'select') return
   e.stopPropagation()
 
-  const rect = containerRef.value!.getBoundingClientRect()
+  const canvas = canvasRef.value
+  if (!canvas) return
+
+  const rect = canvas.getBoundingClientRect()
   const screenX = e.clientX - rect.left
   const screenY = e.clientY - rect.top
-  const imgPt = transform.screenToImage(screenX, screenY)
+  const imgPt = viewportToImage(screenX, screenY)
 
   store.savePreDragSnapshot()
   isDragging.value = true
@@ -279,11 +301,6 @@ onUnmounted(() => {
   window.removeEventListener('keyup', onKeyUp)
 })
 
-// ── SVG viewBox ──
-const svgViewBox = computed(() =>
-  `0 0 ${transform.imageSize.value.x} ${transform.imageSize.value.y}`
-)
-
 // ── 光标样式 ──
 const cursorClass = computed(() => {
   if (spaceHeld.value || props.activeTool === 'pan') return 'cursor-grab'
@@ -295,47 +312,37 @@ const cursorClass = computed(() => {
 
 <template>
   <div
-    ref="containerRef"
-    :class="['relative w-full h-full overflow-hidden bg-bg-canvas select-none', cursorClass]"
+    :class="['relative w-full h-full overflow-hidden bg-bg-canvas select-none flex items-center justify-center', cursorClass]"
     @wheel.prevent="onWheel"
-    @mousedown.left="onMouseDown"
-    @mousemove="onMouseMove"
-    @mouseup.left="onMouseUp"
-    @mouseleave="onMouseUp"
   >
     <!-- 加载中 -->
     <div v-if="!imageLoaded" class="absolute inset-0 flex items-center justify-center text-text-muted">
       <div class="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
     </div>
 
-    <!-- 图片 + SVG 层 -->
-    <div
-      v-show="imageLoaded"
-      class="absolute top-0 left-0 origin-top-left pointer-events-none"
-      :style="{ transform: transform.transformStyle.value }"
-    >
-      <!-- 页面图片 -->
-      <img
-        v-if="imageUrl"
-        ref="imageRef"
-        :src="imageUrl"
+    <!-- Canvas + SVG 叠加层（固定视口） -->
+    <div v-show="imageLoaded" class="relative" style="width: 800px; height: 600px;">
+      <!-- 渲染层：Canvas（物理尺寸锁定，矩阵变换绘图） -->
+      <canvas
+        ref="canvasRef"
         class="block"
-        :style="{ width: `${transform.imageSize.value.x}px`, height: `${transform.imageSize.value.y}px` }"
-        draggable="false"
-        @load="imageLoaded = true"
+        style="width: 800px; height: 600px;"
       />
 
-      <!-- SVG overlay -->
+      <!-- 交互层：SVG overlay（viewBox 与 Canvas 逻辑尺寸一致） -->
       <svg
-        class="absolute top-0 left-0 pointer-events-auto"
-        :width="transform.imageSize.value.x"
-        :height="transform.imageSize.value.y"
+        class="absolute top-0 left-0"
+        style="width: 800px; height: 600px;"
         :viewBox="svgViewBox"
         xmlns="http://www.w3.org/2000/svg"
+        @mousedown.left="onMouseDown"
+        @mousemove="onMouseMove"
+        @mouseup.left="onMouseUp"
+        @mouseleave="onMouseUp"
       >
-        <!-- 已有标注对象 -->
+        <!-- 已有标注对象（视口坐标） -->
         <BBoxOverlay
-          v-for="obj in store.objects.value"
+          v-for="obj in viewportObjects"
           :key="obj.id"
           :obj="obj"
           :selected="store.selectedId.value === obj.id"
@@ -345,7 +352,7 @@ const cursorClass = computed(() => {
           @handle-drag-start="(idx, e) => onBBoxHandleDragStart(obj.id, idx, e)"
         />
 
-        <!-- 画框临时矩形 -->
+        <!-- 画框临时矩形（视口坐标） -->
         <rect
           v-if="tempRect"
           :x="tempRect.x"

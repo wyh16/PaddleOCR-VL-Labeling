@@ -152,6 +152,10 @@ export default {
     timezoneValue: 'Asia/Shanghai',
     lastSaved: '最后保存 {time}',
     roleAnnotator: '标注员',
+    pageList: '页面列表',
+    prevPage: '上一张',
+    nextPage: '下一张',
+    pageN: '第 {current} / {total} 张',
   },
   settings: {
     language: '语言',

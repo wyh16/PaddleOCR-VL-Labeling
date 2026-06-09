@@ -3,7 +3,7 @@
  * 项目详情页 — 优化版文件上传
  * 支持拖拽上传、实时进度、取消、重试、上传后自动刷新页面列表
  */
-import { computed, ref, onMounted, nextTick } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { getToken } from '@/api/client'

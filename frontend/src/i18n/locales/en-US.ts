@@ -152,6 +152,10 @@ export default {
     timezoneValue: 'Asia/Shanghai',
     lastSaved: 'Last saved {time}',
     roleAnnotator: 'Annotator',
+    pageList: 'Pages',
+    prevPage: 'Previous',
+    nextPage: 'Next',
+    pageN: '{current} / {total}',
   },
   settings: {
     language: 'Language',
