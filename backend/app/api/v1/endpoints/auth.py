@@ -38,6 +38,7 @@ def login(payload: LoginRequest, db: Session = Depends(get_db_session)) -> Login
             id=user.id,
             username=user.username,
             display_name=user.display_name,
+            is_system_admin=user.is_system_admin,
         ),
     )
 
@@ -48,4 +49,5 @@ def read_current_user(current_user: User = Depends(get_current_user)) -> Authent
         id=current_user.id,
         username=current_user.username,
         display_name=current_user.display_name,
+        is_system_admin=current_user.is_system_admin,
     )

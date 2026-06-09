@@ -1,7 +1,7 @@
 /**
  * API 模块统一导出
  */
-export { api, ApiClientError } from './client'
+export { api, ApiClientError, setToken, getToken, clearToken } from './client'
 export type { ApiError } from './client'
 
 export { authApi } from './auth'

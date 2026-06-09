@@ -28,7 +28,14 @@ async function loadProjects() {
     projects.value = response.items
   } catch (e) {
     if (e instanceof ApiClientError) {
-      error.value = e.status === 0 ? t('errors.network') : t('errors.server')
+      // 404/501 视为空列表（后端未实现该接口）
+      if (e.status === 404 || e.status === 501) {
+        projects.value = []
+      } else if (e.status === 0) {
+        error.value = t('errors.network')
+      } else {
+        error.value = t('errors.server')
+      }
     } else {
       error.value = t('errors.unknown')
     }

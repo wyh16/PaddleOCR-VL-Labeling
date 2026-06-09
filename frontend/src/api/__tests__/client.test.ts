@@ -26,7 +26,9 @@ describe('ApiClient', () => {
       const result = await api.get('/test')
       expect(result).toEqual(data)
       expect(mockFetch).toHaveBeenCalledWith('/api/v1/test', expect.objectContaining({
-        credentials: 'include',
+        headers: expect.objectContaining({
+          'Content-Type': 'application/json',
+        }),
       }))
     })
 

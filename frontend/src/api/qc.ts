@@ -1,8 +1,7 @@
 /**
  * 质检(QC)相关 API
  */
-import { api, mockFallback } from './client'
-import { mockQcIssues, mockDelay } from './mock'
+import { api } from './client'
 
 export type QcSeverity = 'error' | 'warning' | 'info'
 
@@ -24,13 +23,8 @@ export interface QcListResponse {
 
 export const qcApi = {
   /** 获取页面 QC 问题列表 */
-  listByPage: (pageId: string) => mockFallback(
-    () => api.get<QcListResponse>(`/pages/${pageId}/qc`),
-    () => {
-      const issues = mockQcIssues.filter(q => q.page_id === pageId)
-      return mockDelay({ items: issues, total: issues.length })
-    },
-  ),
+  listByPage: (pageId: string) =>
+    api.get<QcListResponse>(`/pages/${pageId}/qc`),
 
   /** 获取项目 QC 问题列表 */
   listByProject: (projectId: string, _params?: { page?: number; page_size?: number; severity?: QcSeverity }) =>

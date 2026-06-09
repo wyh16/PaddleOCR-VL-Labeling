@@ -161,6 +161,15 @@ export default {
     security: 'Security',
     noConfigItems: 'No configurable items',
   },
+  upload: {
+    dragOrClick: 'Drag files here or click to select',
+    acceptHint: 'Supports {accept}, max {maxSize}MB per file',
+    uploading: 'Uploading...',
+    success: 'Upload successful',
+    failed: 'Upload failed',
+    selectFiles: 'Select files',
+    startUpload: 'Start Upload',
+  },
   routes: {
     auth: {
       login: 'Login',

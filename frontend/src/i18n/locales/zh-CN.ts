@@ -161,6 +161,15 @@ export default {
     security: '安全设置',
     noConfigItems: '暂无可配置项',
   },
+  upload: {
+    dragOrClick: '拖拽文件到此处或点击选择',
+    acceptHint: '支持 {accept}，单文件最大 {maxSize}MB',
+    uploading: '上传中...',
+    success: '上传成功',
+    failed: '上传失败',
+    selectFiles: '选择文件',
+    startUpload: '开始上传',
+  },
   routes: {
     auth: {
       login: '登录',

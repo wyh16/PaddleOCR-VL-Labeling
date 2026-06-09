@@ -4,6 +4,7 @@
  * 提供全局框架：左侧导航栏、顶部栏、主内容区
  * 规范：frontend_component_library_spec.md §6 AppShell
  */
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { useAuth } from '@/composables/useAuth'
@@ -37,7 +38,7 @@ interface NavItem {
   disabled?: boolean
 }
 
-const navItems: NavItem[] = [
+const navItems = computed<NavItem[]>(() => [
   { key: 'dashboard', icon: LayoutDashboard, disabled: true },
   { key: 'projects', icon: FolderKanban, routeName: 'projects.index' },
   { key: 'tasks', icon: ClipboardList, disabled: true },
@@ -45,9 +46,9 @@ const navItems: NavItem[] = [
   { key: 'workspace', icon: PenTool, disabled: true },
   { key: 'qc', icon: ShieldCheck, disabled: true },
   { key: 'exports', icon: Download, disabled: true },
-  { key: 'users', icon: Users, disabled: true },
+  { key: 'users', icon: Users, routeName: 'users.index', disabled: !user.value?.is_system_admin },
   { key: 'settings', icon: Settings, routeName: 'settings.index' },
-]
+])
 </script>
 
 <template>
