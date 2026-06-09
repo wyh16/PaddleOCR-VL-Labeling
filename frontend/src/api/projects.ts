@@ -1,14 +1,24 @@
 /**
  * 项目相关 API
+ * 后端：/api/v1/projects
  */
-import { api, mockFallback } from './client'
-import { mockProjects, mockDelay } from './mock'
+import { api } from './client'
+
+/** 后端返回的原始项目数据 */
+interface RawProject {
+  id: number
+  name: string
+  description: string | null
+  schema_version: string
+  created_at: string
+  updated_at: string
+}
 
 export interface Project {
   id: string
   name: string
-  description: string
-  status: string
+  description: string | null
+  schema_version: string
   created_at: string
   updated_at: string
 }
@@ -18,43 +28,38 @@ export interface ProjectListResponse {
   total: number
 }
 
+function adaptProject(raw: RawProject): Project {
+  return { ...raw, id: String(raw.id) }
+}
+
 export const projectsApi = {
   /** 获取项目列表 */
-  list: (params?: { page?: number; size?: number }) => {
+  list: async (params?: { page?: number; size?: number }): Promise<ProjectListResponse> => {
     const query = new URLSearchParams()
     if (params?.page) query.set('page', String(params.page))
     if (params?.size) query.set('size', String(params.size))
     const qs = query.toString()
-    return mockFallback(
-      () => api.get<ProjectListResponse>(`/projects${qs ? `?${qs}` : ''}`),
-      () => mockDelay({ items: mockProjects, total: mockProjects.length }),
-    )
+    const res = await api.get<{ items: RawProject[]; total: number }>(`/projects${qs ? `?${qs}` : ''}`)
+    return { items: res.items.map(adaptProject), total: res.total }
   },
 
   /** 获取项目详情 */
-  get: (projectId: string) =>
-    mockFallback(
-      () => api.get<Project>(`/projects/${projectId}`),
-      () => mockDelay(mockProjects.find(p => p.id === projectId) || mockProjects[0]),
-    ),
+  get: async (projectId: string): Promise<Project> => {
+    const raw = await api.get<RawProject>(`/projects/${projectId}`)
+    return adaptProject(raw)
+  },
 
   /** 创建项目 */
-  create: (data: { name: string; description?: string }) =>
-    mockFallback(
-      () => api.post<Project>('/projects', data),
-      () => mockDelay({
-        id: `proj-${Date.now()}`,
-        name: data.name,
-        description: data.description || '',
-        status: 'active',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      }),
-    ),
+  create: async (data: { name: string; description?: string }): Promise<Project> => {
+    const raw = await api.post<RawProject>('/projects', data)
+    return adaptProject(raw)
+  },
 
   /** 更新项目 */
-  update: (projectId: string, data: Partial<Project>) =>
-    api.patch<Project>(`/projects/${projectId}`, data),
+  update: async (projectId: string, data: Partial<Project>): Promise<Project> => {
+    const raw = await api.patch<RawProject>(`/projects/${projectId}`, data)
+    return adaptProject(raw)
+  },
 
   /** 删除项目 */
   delete: (projectId: string) =>

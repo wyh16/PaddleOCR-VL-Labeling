@@ -75,8 +75,9 @@ async function request<T>(
     ...(options.headers as Record<string, string>),
   }
 
-  if (accessToken) {
-    headers['Authorization'] = `Bearer ${accessToken}`
+  const token = getToken()
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`
   }
 
   const config: RequestInit = {

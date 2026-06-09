@@ -3,7 +3,6 @@
  * 后端未开发完成时，前端使用 mock 数据独立运行
  * 当 API 请求失败时自动 fallback 到 mock 数据
  */
-import type { Project } from './projects'
 import type { Page, Capabilities } from './pages'
 import type { AnnotationRevision } from './annotations'
 import type { QcIssue } from './qc'
@@ -16,50 +15,6 @@ export const mockUser: User = {
   display_name: 'Admin',
   is_system_admin: true,
 }
-
-// ── 项目 ──
-export const mockProjects: Project[] = [
-  {
-    id: 'proj-001',
-    name: '小学数学试卷项目',
-    description: '2024年春季学期三年级数学期末考试试卷识别与结构化解析',
-    status: 'active',
-    created_at: '2024-03-01T00:00:00Z',
-    updated_at: '2024-05-27T00:00:00Z',
-  },
-  {
-    id: 'proj-002',
-    name: '初中英语试卷项目',
-    description: '初二英语单元测试卷识别',
-    status: 'active',
-    created_at: '2024-04-01T00:00:00Z',
-    updated_at: '2024-05-20T00:00:00Z',
-  },
-  {
-    id: 'proj-003',
-    name: '小学语文试卷项目',
-    description: '四年级语文阅读理解试卷',
-    status: 'completed',
-    created_at: '2024-02-01T00:00:00Z',
-    updated_at: '2024-04-15T00:00:00Z',
-  },
-  {
-    id: 'proj-004',
-    name: '高中物理试卷项目',
-    description: '高一物理力学部分试卷',
-    status: 'active',
-    created_at: '2024-05-01T00:00:00Z',
-    updated_at: '2024-05-25T00:00:00Z',
-  },
-  {
-    id: 'proj-005',
-    name: '初中数学试卷项目',
-    description: '七年级数学期中考试卷',
-    status: 'completed',
-    created_at: '2024-01-15T00:00:00Z',
-    updated_at: '2024-03-30T00:00:00Z',
-  },
-]
 
 // ── 页面 ──
 export const mockPages: Page[] = Array.from({ length: 15 }, (_, i) => ({
