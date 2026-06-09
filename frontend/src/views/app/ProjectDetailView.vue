@@ -4,21 +4,45 @@
  * tab 通过 URL Query 驱动，支持刷新保持
  * 参考：doc/开发文档/前端/frontend_routing_spec.md 第 9 章
  */
-import { computed, ref } from 'vue'
+import { computed, ref, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { assetsApi, type AssetUploadResponse } from '@/api/assets'
+import { pagesApi, type Page } from '@/api/pages'
 import { ApiClientError } from '@/api/client'
 import BaseTabs from '@/components/base/BaseTabs.vue'
 import BaseFileUpload from '@/components/base/BaseFileUpload.vue'
 import BaseButton from '@/components/base/BaseButton.vue'
-import { FileCheck, AlertCircle, Loader2 } from 'lucide-vue-next'
+import BaseEmptyState from '@/components/base/BaseEmptyState.vue'
+import { FileCheck, AlertCircle, Loader2, FileImage, PenTool } from 'lucide-vue-next'
 
 const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
 
 const projectId = computed(() => route.params.project_id as string)
+
+// ── 页面列表 ──
+const pages = ref<Page[]>([])
+const pagesLoading = ref(true)
+
+async function loadPages() {
+  pagesLoading.value = true
+  try {
+    const res = await pagesApi.list(projectId.value)
+    pages.value = res.items
+  } catch {
+    pages.value = []
+  } finally {
+    pagesLoading.value = false
+  }
+}
+
+function openWorkspace(pageId: string) {
+  router.push({ name: 'pages.workspace', params: { page_id: pageId } })
+}
+
+onMounted(() => { loadPages() })
 
 const VALID_TABS = ['pages', 'members', 'jobs', 'exports', 'settings'] as const
 type Tab = typeof VALID_TABS[number]

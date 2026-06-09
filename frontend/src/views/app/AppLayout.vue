@@ -43,7 +43,7 @@ const navItems = computed<NavItem[]>(() => [
   { key: 'projects', icon: FolderKanban, routeName: 'projects.index' },
   { key: 'tasks', icon: ClipboardList, disabled: true },
   { key: 'datasets', icon: Database, disabled: true },
-  { key: 'workspace', icon: PenTool, disabled: true },
+  { key: 'workspace', icon: PenTool, routeName: 'projects.index' },
   { key: 'qc', icon: ShieldCheck, disabled: true },
   { key: 'exports', icon: Download, disabled: true },
   { key: 'users', icon: Users, routeName: 'users.index', disabled: !user.value?.is_system_admin },
