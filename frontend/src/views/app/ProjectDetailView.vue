@@ -4,7 +4,7 @@
  * tab 通过 URL Query 驱动，支持刷新保持
  * 参考：doc/开发文档/前端/frontend_routing_spec.md 第 9 章
  */
-import { computed, ref, onMounted, watch } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { assetsApi, type AssetUploadResponse } from '@/api/assets'
@@ -122,7 +122,7 @@ function clearCompleted() {
 
       <!-- Tab 内容 -->
       <div class="py-4">
-        <!-- 页面 tab：上传图片 -->
+        <!-- 页面 tab：上传图片 + 页面列表 -->
         <div v-if="activeTab === 'pages'">
           <BaseFileUpload
             accept="image/*"
@@ -172,6 +172,40 @@ function clearCompleted() {
                 <span class="text-caption text-text-muted shrink-0">
                   {{ (item.file.size / 1024 / 1024).toFixed(1) }}MB
                 </span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 已有页面列表 -->
+          <div class="mt-6">
+            <h3 class="text-body-medium text-text mb-3">{{ t('routes.projects.tabs.pages') }}</h3>
+
+            <div v-if="pagesLoading" class="space-y-2">
+              <div v-for="i in 3" :key="i" class="h-16 bg-surface-alt rounded-lg animate-pulse"></div>
+            </div>
+
+            <BaseEmptyState
+              v-else-if="pages.length === 0"
+              :icon="FileImage"
+              :title="t('common.noData')"
+              :description="t('upload.selectFiles')"
+            />
+
+            <div v-else class="space-y-2">
+              <div
+                v-for="page in pages"
+                :key="page.page_id"
+                class="flex items-center gap-3 p-3 bg-surface rounded-lg border border-border hover:border-primary/40 cursor-pointer transition-all duration-fast"
+                @click="openWorkspace(page.page_id)"
+              >
+                <FileImage class="w-5 h-5 text-primary shrink-0" />
+                <div class="flex-1 min-w-0">
+                  <p class="text-body text-text truncate">{{ page.filename }}</p>
+                  <p class="text-caption text-text-muted">{{ page.width }}×{{ page.height }} · {{ page.status }}</p>
+                </div>
+                <BaseButton variant="ghost" size="sm" :left-icon="PenTool">
+                  {{ t('annotation.tools.select') }}
+                </BaseButton>
               </div>
             </div>
           </div>

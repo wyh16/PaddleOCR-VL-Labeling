@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Sequence
 
 from alembic import op
+from sqlalchemy import text
 
 revision: str = "20260608_0003"
 down_revision: str | None = "20260603_0002"
@@ -54,15 +55,19 @@ def upgrade() -> None:
         f"{base64.urlsafe_b64encode(digest).decode('ascii').rstrip('=')}"
     )
 
-    op.execute(
-        f"""
+    op.get_bind().execute(
+        text("""
         INSERT INTO users (username, display_name, password_hash, status, is_system_admin)
-        VALUES ('{username}', '管理员', '{password_hash}', 'active', true)
+        VALUES (:username, '管理员', :password_hash, 'active', true)
         ON CONFLICT (username) DO NOTHING
-        """
+        """),
+        {"username": username, "password_hash": password_hash},
     )
 
 
 def downgrade() -> None:
     username = os.getenv("SEED_ADMIN_USERNAME", "admin")
-    op.execute(f"DELETE FROM users WHERE username = '{username}' AND is_system_admin = true")
+    op.get_bind().execute(
+        text("DELETE FROM users WHERE username = :username AND is_system_admin = true"),
+        {"username": username},
+    )
