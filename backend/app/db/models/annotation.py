@@ -103,7 +103,9 @@ class AnnotationRevision(TimestampMixin, Base):
         nullable=False,
         comment="页面内部主键：引用 pages.id；公开页面编号位于 pages.public_id。",
     )
-    revision_no: Mapped[int] = mapped_column(Integer, nullable=False, comment="同一页面内递增版本号。")
+    revision_no: Mapped[int] = mapped_column(
+        Integer, nullable=False, comment="同一页面内递增版本号。"
+    )
     parent_revision_id: Mapped[int | None] = mapped_column(
         BigInteger,
         ForeignKey(
@@ -155,7 +157,7 @@ class AnnotationObject(TimestampMixin, Base):
             name="ck_annotation_objects_read_order",
         ),
         CheckConstraint(
-            "status IN ('active', 'deleted')",
+            "status IN ('draft', 'active', 'deleted')",
             name="ck_annotation_objects_status",
         ),
         CheckConstraint(
@@ -187,14 +189,16 @@ class AnnotationObject(TimestampMixin, Base):
             name="ck_annotation_objects_attributes_json_object",
         ),
         CheckConstraint(
-            "jsonb_typeof(source_refs_json) = 'object'",
-            name="ck_annotation_objects_source_refs_json_object",
+            "jsonb_typeof(source_refs_json) IN ('object', 'array')",
+            name="ck_annotation_objects_source_refs_json_container",
         ),
         Index("ix_annotation_objects_revision_id", "revision_id"),
         Index("ix_annotation_objects_label", "label_namespace", "label_name"),
         Index("ix_annotation_objects_status", "status"),
         Index("ix_annotation_objects_read_order", "read_order"),
-        {"comment": "标注对象索引表：从 annotation revision JSON 抽取，用于查询和导出前索引。"},
+        {
+            "comment": "标注对象索引表：从 annotation revision JSON 抽取，用于查询和导出前索引。"
+        },
     )
 
     id: Mapped[int] = mapped_column(
@@ -218,22 +222,26 @@ class AnnotationObject(TimestampMixin, Base):
         nullable=False,
         comment="标注对象编号：来自 revision JSON，同一 revision 内唯一。",
     )
-    label_namespace: Mapped[str] = mapped_column(Text, nullable=False, comment="标签命名空间。")
+    label_namespace: Mapped[str] = mapped_column(
+        Text, nullable=False, comment="标签命名空间。"
+    )
     label_name: Mapped[str] = mapped_column(Text, nullable=False, comment="标签名称。")
     bbox_xyxy: Mapped[list[Any] | None] = mapped_column(JSONB, comment="bbox 几何。")
     quad: Mapped[list[Any] | None] = mapped_column(JSONB, comment="四点几何。")
     polygon: Mapped[list[Any] | None] = mapped_column(JSONB, comment="多边形几何。")
-    read_order: Mapped[int | None] = mapped_column(Integer, comment="阅读顺序索引：事实来源仍是 revision JSON。")
+    read_order: Mapped[int | None] = mapped_column(
+        Integer, comment="阅读顺序索引：事实来源仍是 revision JSON。"
+    )
     attributes_json: Mapped[dict[str, Any]] = mapped_column(
         JSONB,
         nullable=False,
         server_default=text("'{}'::jsonb"),
         comment="标注对象属性 JSON。",
     )
-    source_refs_json: Mapped[dict[str, Any]] = mapped_column(
+    source_refs_json: Mapped[Any] = mapped_column(
         JSONB,
         nullable=False,
-        server_default=text("'{}'::jsonb"),
+        server_default=text("'[]'::jsonb"),
         comment="来源引用 JSON。",
     )
     status: Mapped[str] = mapped_column(
