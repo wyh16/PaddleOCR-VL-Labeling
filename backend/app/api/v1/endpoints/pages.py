@@ -1,188 +1,302 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, Body, Depends, Query, status
+from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
-from app.core.security import get_current_user
+from app.core.security import ensure_project_capability, get_current_user
 from app.db.models import User
-from app.db.models.annotation import AnnotationRevision
 from app.db.models.asset import Asset
 from app.db.models.document import Document
 from app.db.models.page import Page
 from app.db.models.project import Project
 from app.db.models.qc import QcResult
 from app.db.session import get_db_session
-from app.schemas.page import PageListOut, PageOut
+from app.schemas.annotation import (
+    AnnotationRevisionReadData,
+    AnnotationRevisionResponse,
+)
+from app.schemas.page import PageImageRead, PageListOut, PageOut, PageReadData, PageReadResponse
+from app.services.annotation_service import (
+    AnnotationRevisionNotFoundError,
+    InvalidAnnotationError,
+    PageNotFoundError,
+    create_annotation_revision,
+    get_annotation_revision,
+    get_latest_annotation_revision,
+    get_page_detail,
+    RevisionConflictError,
+)
+from app.storage.local import StorageError
+from app.utils.ids import new_public_id
 
-router = APIRouter(prefix="/pages", tags=["pages"])
-
-
-def _resolve_page(db: Session, page_public_id: str, current_user: User) -> tuple[Page, Document, Project]:
-    """解析页面并校验用户权限，返回 (page, document, project)。"""
-    page = db.scalar(select(Page).where(Page.public_id == page_public_id))
-    if not page:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Page not found")
-    doc = db.get(Document, page.document_id)
-    if not doc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
-    project = db.get(Project, doc.project_id)
-    if not project or project.created_by != current_user.id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
-    return page, doc, project
+router = APIRouter(tags=["pages"])
 
 
 # ── 页面详情 ──
 
 
-@router.get("/{page_public_id}", response_model=PageOut, summary="获取页面详情")
-def get_page(
-    page_public_id: str,
+@router.get(
+    "/pages/{page_id}",
+    response_model=PageReadResponse,
+    summary="获取页面详情",
+)
+def read_page(
+    page_id: str,
     db: Session = Depends(get_db_session),
     current_user: User = Depends(get_current_user),
-) -> PageOut:
-    page, doc, project = _resolve_page(db, page_public_id, current_user)
-    filename = (doc.domain_metadata_json or {}).get("original_filename") or f"page-{page.public_id}"
-    return PageOut(
-        id=page.id,
-        page_id=page.public_id,
-        project_id=doc.project_id,
-        filename=filename,
-        status=page.status,
-        width=page.width,
-        height=page.height,
-        created_at=page.created_at,
-        updated_at=page.updated_at,
+) -> PageReadResponse | JSONResponse:
+    try:
+        page = get_page_detail(db=db, page_public_id=page_id)
+    except PageNotFoundError as exc:
+        return _error_response(
+            status_code=status.HTTP_404_NOT_FOUND,
+            code="PAGE_NOT_FOUND",
+            message=str(exc),
+            details={"page_id": page_id},
+        )
+    ensure_project_capability(
+        db,
+        user_id=current_user.id,
+        project_id=int(page["project_id"]),
+        capability="can_view_project",
     )
-
-
-@router.delete("/{page_public_id}", status_code=status.HTTP_204_NO_CONTENT, summary="删除页面")
-def delete_page(
-    page_public_id: str,
-    db: Session = Depends(get_db_session),
-    current_user: User = Depends(get_current_user),
-) -> None:
-    page, doc, _project = _resolve_page(db, page_public_id, current_user)
-
-    # 删除页面记录
-    db.delete(page)
-    db.flush()
-
-    # 删除关联的文档记录
-    db.delete(doc)
-    db.commit()
+    return PageReadResponse(data=_page_data(page), request_id=new_public_id("req"))
 
 
 # ── 页面图片 ──
 
 
-@router.get("/{page_public_id}/image", summary="获取页面图片访问 URL")
+@router.get("/pages/{page_id}/image", summary="获取页面图片访问 URL")
 def get_page_image_url(
-    page_public_id: str,
+    page_id: str,
     db: Session = Depends(get_db_session),
     current_user: User = Depends(get_current_user),
-) -> dict:
-    page, _doc, _project = _resolve_page(db, page_public_id, current_user)
-    if not page.image_asset_id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Page has no image asset")
-
-    asset = db.get(Asset, page.image_asset_id)
-    if not asset:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found")
-
+) -> dict | JSONResponse:
+    try:
+        page_data = get_page_detail(db=db, page_public_id=page_id)
+    except PageNotFoundError as exc:
+        return _error_response(
+            status_code=status.HTTP_404_NOT_FOUND,
+            code="PAGE_NOT_FOUND",
+            message=str(exc),
+            details={"page_id": page_id},
+        )
+    ensure_project_capability(
+        db,
+        user_id=current_user.id,
+        project_id=int(page_data["project_id"]),
+        capability="can_view_project",
+    )
     return {
-        "url": f"/api/v1/pages/{page_public_id}/image/raw",
+        "url": f"/api/v1/pages/{page_id}/image/raw",
         "expires_at": "9999-12-31T23:59:59Z",
     }
 
 
-@router.get("/{page_public_id}/image/raw", summary="获取页面图片文件")
+@router.get("/pages/{page_id}/image/raw", summary="获取页面图片文件")
 def get_page_image_raw(
-    page_public_id: str,
+    page_id: str,
     db: Session = Depends(get_db_session),
     current_user: User = Depends(get_current_user),
-) -> FileResponse:
-    page, _doc, _project = _resolve_page(db, page_public_id, current_user)
+) -> FileResponse | JSONResponse:
+    page = db.scalar(select(Page).where(Page.public_id == page_id))
+    if not page:
+        return _error_response(
+            status_code=status.HTTP_404_NOT_FOUND,
+            code="PAGE_NOT_FOUND",
+            message="Page not found",
+            details={"page_id": page_id},
+        )
     if not page.image_asset_id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Page has no image asset")
+        return _error_response(
+            status_code=status.HTTP_404_NOT_FOUND,
+            code="IMAGE_NOT_FOUND",
+            message="Page has no image asset",
+            details={"page_id": page_id},
+        )
 
     asset = db.get(Asset, page.image_asset_id)
     if not asset:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found")
+        return _error_response(
+            status_code=status.HTTP_404_NOT_FOUND,
+            code="ASSET_NOT_FOUND",
+            message="Asset not found",
+            details={"page_id": page_id},
+        )
 
     settings = get_settings()
     file_path = Path(settings.storage_root) / asset.storage_path
     if not file_path.exists():
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Image file not found on disk")
+        return _error_response(
+            status_code=status.HTTP_404_NOT_FOUND,
+            code="FILE_NOT_FOUND",
+            message="Image file not found on disk",
+            details={"page_id": page_id},
+        )
 
-    media_type = asset.mime_type or "application/octet-stream"
-    return FileResponse(path=str(file_path), media_type=media_type)
+    return FileResponse(path=str(file_path), media_type=asset.mime_type or "application/octet-stream")
 
 
 # ── 标注 ──
 
 
-@router.get("/{page_public_id}/annotations/latest", summary="获取页面最新标注")
-def get_latest_annotation(
-    page_public_id: str,
+@router.get(
+    "/pages/{page_id}/annotation/latest",
+    response_model=AnnotationRevisionResponse,
+    summary="读取页面最新标注版本",
+)
+def read_latest_annotation_revision(
+    page_id: str,
     db: Session = Depends(get_db_session),
     current_user: User = Depends(get_current_user),
-) -> dict:
-    page, _doc, _project = _resolve_page(db, page_public_id, current_user)
-
-    rev = db.scalar(
-        select(AnnotationRevision)
-        .where(AnnotationRevision.page_id == page.id)
-        .order_by(AnnotationRevision.revision_no.desc())
-        .limit(1)
+) -> AnnotationRevisionResponse | JSONResponse:
+    try:
+        page = get_page_detail(db=db, page_public_id=page_id)
+    except PageNotFoundError as exc:
+        return _error_response(
+            status_code=status.HTTP_404_NOT_FOUND,
+            code="PAGE_NOT_FOUND",
+            message=str(exc),
+            details={"page_id": page_id},
+        )
+    ensure_project_capability(
+        db,
+        user_id=current_user.id,
+        project_id=int(page["project_id"]),
+        capability="can_view_project",
     )
-    # 新页面没有标注时返回空结构，而不是 404
-    if not rev:
-        return {
-            "id": None,
-            "page_id": page.public_id,
-            "revision_no": 0,
-            "base_revision_id": None,
-            "created_at": None,
-            "created_by": None,
-            "data": {"objects": []},
-        }
+    try:
+        result = get_latest_annotation_revision(db=db, page_public_id=page_id)
+    except AnnotationRevisionNotFoundError as exc:
+        return _error_response(
+            status_code=status.HTTP_404_NOT_FOUND,
+            code="ANNOTATION_REVISION_NOT_FOUND",
+            message=str(exc),
+            details={"page_id": page_id},
+        )
+    except StorageError as exc:
+        return _error_response(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            code="STORAGE_ERROR",
+            message=str(exc),
+            details={"page_id": page_id},
+        )
+    return AnnotationRevisionResponse(
+        data=_revision_data(
+            revision=result["revision"],
+            asset=result["asset"],
+            annotation_json=result["annotation_json"],
+            page_id=page_id,
+        ),
+        request_id=new_public_id("req"),
+    )
 
-    # 读取标注 JSON 资产内容
-    ann_asset = db.get(Asset, rev.annotation_json_asset_id)
-    ann_data: dict = {}
-    if ann_asset:
-        settings = get_settings()
-        ann_path = Path(settings.storage_root) / ann_asset.storage_path
-        if ann_path.exists():
-            import json
-            ann_data = json.loads(ann_path.read_text(encoding="utf-8"))
 
-    return {
-        "id": rev.public_id,
-        "page_id": page.public_id,
-        "revision_no": rev.revision_no,
-        "base_revision_id": None,
-        "created_at": rev.created_at.isoformat() if rev.created_at else None,
-        "created_by": str(rev.created_by) if rev.created_by else None,
-        "data": ann_data,
-    }
+@router.post(
+    "/pages/{page_id}/annotation/revisions",
+    response_model=AnnotationRevisionResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="创建页面标注版本",
+)
+def create_page_annotation_revision(
+    page_id: str,
+    payload: dict[str, Any] = Body(
+        ..., description="整页 annotation JSON 或包装后的提交请求。"
+    ),
+    db: Session = Depends(get_db_session),
+    current_user: User = Depends(get_current_user),
+) -> AnnotationRevisionResponse | JSONResponse:
+    try:
+        page = get_page_detail(db=db, page_public_id=page_id)
+    except PageNotFoundError as exc:
+        return _error_response(
+            status_code=status.HTTP_404_NOT_FOUND,
+            code="PAGE_NOT_FOUND",
+            message=str(exc),
+            details={"page_id": page_id},
+        )
+    ensure_project_capability(
+        db,
+        user_id=current_user.id,
+        project_id=int(page["project_id"]),
+        capability="can_create_annotation_revision",
+    )
+    annotation_json, change_summary, change_reason, base_revision_id = (
+        _extract_revision_payload(payload)
+    )
+    try:
+        revision = create_annotation_revision(
+            db=db,
+            page_public_id=page_id,
+            annotation_json=annotation_json,
+            created_by=current_user.id,
+            change_summary=change_summary,
+            change_reason=change_reason,
+            base_revision_id=base_revision_id,
+        )
+        result = get_annotation_revision(db=db, revision_public_id=revision.public_id)
+    except InvalidAnnotationError as exc:
+        return _error_response(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            code="VALIDATION_ERROR",
+            message=str(exc),
+            details={"page_id": page_id},
+        )
+    except RevisionConflictError as exc:
+        return _error_response(
+            status_code=status.HTTP_409_CONFLICT,
+            code="REVISION_CONFLICT",
+            message=str(exc),
+            details={"page_id": page_id},
+        )
+    except PageNotFoundError as exc:
+        return _error_response(
+            status_code=status.HTTP_404_NOT_FOUND,
+            code="PAGE_NOT_FOUND",
+            message=str(exc),
+            details={"page_id": page_id},
+        )
+    except StorageError as exc:
+        return _error_response(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            code="STORAGE_ERROR",
+            message=str(exc),
+            details={"page_id": page_id},
+        )
+    return AnnotationRevisionResponse(
+        data=_revision_data(
+            revision=revision,
+            asset=result["asset"],
+            annotation_json=result["annotation_json"],
+            page_id=page_id,
+        ),
+        request_id=new_public_id("req"),
+    )
 
 
 # ── QC ──
 
 
-@router.get("/{page_public_id}/qc", summary="获取页面 QC 问题列表")
+@router.get("/pages/{page_id}/qc", summary="获取页面 QC 问题列表")
 def list_page_qc(
-    page_public_id: str,
+    page_id: str,
     db: Session = Depends(get_db_session),
     current_user: User = Depends(get_current_user),
-) -> dict:
-    page, _doc, _project = _resolve_page(db, page_public_id, current_user)
+) -> dict | JSONResponse:
+    page = db.scalar(select(Page).where(Page.public_id == page_id))
+    if not page:
+        return _error_response(
+            status_code=status.HTTP_404_NOT_FOUND,
+            code="PAGE_NOT_FOUND",
+            message="Page not found",
+            details={"page_id": page_id},
+        )
 
     rows = db.scalars(
         select(QcResult)
@@ -206,7 +320,7 @@ def list_page_qc(
     return {"items": items, "total": len(items)}
 
 
-# ── 项目级页面列表（挂载在 projects 路由下，见 projects.py） ──
+# ── 项目级页面列表 ──
 
 
 def list_project_pages(
@@ -217,9 +331,11 @@ def list_project_pages(
     """被 projects router 调用的内部函数：获取项目下所有页面。"""
     project = db.get(Project, project_id)
     if not project:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
-    if project.created_by != current_user.id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+        return _error_response(
+            status_code=status.HTTP_404_NOT_FOUND,
+            code="PROJECT_NOT_FOUND",
+            message="Project not found",
+        )
 
     stmt = (
         select(Page, Document)
@@ -247,3 +363,81 @@ def list_project_pages(
         )
 
     return PageListOut(items=items, total=len(items))
+
+
+# ── 内部工具函数 ──
+
+
+def _error_response(
+    *,
+    status_code: int,
+    code: str,
+    message: str,
+    details: dict[str, Any] | None = None,
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=status_code,
+        content={
+            "error": {
+                "code": code,
+                "message": message,
+                "details": details or {},
+            },
+            "request_id": new_public_id("req"),
+        },
+    )
+
+
+def _extract_revision_payload(
+    payload: dict[str, Any],
+) -> tuple[dict[str, Any], str | None, str | None, str | None]:
+    annotation_json = payload.get("annotation_json")
+    if isinstance(annotation_json, dict):
+        return (
+            annotation_json,
+            _optional_text(payload.get("change_summary")),
+            _optional_text(payload.get("change_reason")),
+            _optional_text(payload.get("base_revision_id")),
+        )
+    return payload, None, None, None
+
+
+def _optional_text(value: Any) -> str | None:
+    return value if isinstance(value, str) and value.strip() else None
+
+
+def _page_data(page: dict[str, Any]) -> PageReadData:
+    return PageReadData(
+        page_id=page["page_public_id"],
+        document_id=page["document_public_id"],
+        project_id=page["project_id"],
+        page_index=page["page_index"],
+        status=page["status"],
+        capture_method=page.get("capture_method"),
+        visual_difficulty=page.get("visual_difficulty"),
+        image=PageImageRead(
+            asset_id=page.get("image_asset_public_id"),
+            width=page["width"],
+            height=page["height"],
+            sha256=page.get("image_sha256"),
+        ),
+    )
+
+
+def _revision_data(
+    *,
+    revision: Any,
+    asset: Any,
+    annotation_json: dict[str, Any],
+    page_id: str,
+) -> AnnotationRevisionReadData:
+    return AnnotationRevisionReadData(
+        revision_id=revision.public_id,
+        page_id=page_id,
+        revision_no=revision.revision_no,
+        status=revision.status,
+        qc_status=revision.qc_status,
+        sha256=getattr(asset, "sha256", None),
+        size_bytes=getattr(asset, "size_bytes", None),
+        annotation_json=annotation_json,
+    )

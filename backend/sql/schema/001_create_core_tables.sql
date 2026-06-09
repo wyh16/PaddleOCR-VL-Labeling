@@ -322,7 +322,7 @@ CREATE TABLE IF NOT EXISTS annotation_objects (
     polygon JSONB,
     read_order INTEGER,
     attributes_json JSONB NOT NULL DEFAULT '{}'::jsonb,
-    source_refs_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+    source_refs_json JSONB NOT NULL DEFAULT '[]'::jsonb,
     status TEXT NOT NULL DEFAULT 'active',
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -330,7 +330,7 @@ CREATE TABLE IF NOT EXISTS annotation_objects (
     CONSTRAINT uq_annotation_objects_revision_ann UNIQUE (revision_id, ann_id),
     CONSTRAINT fk_annotation_objects_revision_id_annotation_revisions FOREIGN KEY (revision_id) REFERENCES annotation_revisions (id) ON DELETE CASCADE,
     CONSTRAINT ck_annotation_objects_read_order CHECK (read_order IS NULL OR read_order > 0),
-    CONSTRAINT ck_annotation_objects_status CHECK (status IN ('active', 'deleted')),
+    CONSTRAINT ck_annotation_objects_status CHECK (status IN ('draft', 'active', 'deleted')),
     CONSTRAINT ck_annotation_objects_ann_id_not_blank CHECK (btrim(ann_id) <> ''),
     CONSTRAINT ck_annotation_objects_label_namespace_not_blank CHECK (btrim(label_namespace) <> ''),
     CONSTRAINT ck_annotation_objects_label_name_not_blank CHECK (btrim(label_name) <> ''),
@@ -338,7 +338,7 @@ CREATE TABLE IF NOT EXISTS annotation_objects (
     CONSTRAINT ck_annotation_objects_quad_json_array CHECK (quad IS NULL OR jsonb_typeof(quad) = 'array'),
     CONSTRAINT ck_annotation_objects_polygon_json_array CHECK (polygon IS NULL OR jsonb_typeof(polygon) = 'array'),
     CONSTRAINT ck_annotation_objects_attributes_json_object CHECK (jsonb_typeof(attributes_json) = 'object'),
-    CONSTRAINT ck_annotation_objects_source_refs_json_object CHECK (jsonb_typeof(source_refs_json) = 'object')
+    CONSTRAINT ck_annotation_objects_source_refs_json_container CHECK (jsonb_typeof(source_refs_json) IN ('object', 'array'))
 );
 
 CREATE INDEX IF NOT EXISTS ix_annotation_objects_revision_id

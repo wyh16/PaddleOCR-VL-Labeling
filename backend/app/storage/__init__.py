@@ -1,3 +1,4 @@
+from app.storage.annotation_json import AnnotationJsonStorage, StoredJsonAsset
 from app.storage.local import (
     StagedUpload,
     StorageError,
@@ -10,7 +11,9 @@ from app.storage.local import (
 
 __all__ = [
     "StagedUpload",
+    "StoredJsonAsset",
     "StorageError",
+    "AnnotationJsonStorage",
     "UnsupportedUploadError",
     "UploadTooLargeError",
     "commit_staged_raw_asset",

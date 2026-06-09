@@ -1,6 +1,6 @@
-# K12 后端（M0-M3 基线）
+# K12 后端（M0-M4 基线）
 
-本后端工程当前包含 `M0`、`M1`、`M2` 和 `M3` 阶段的可运行基线，定义见：
+本后端工程当前包含 `M0`、`M1`、`M2`、`M3` 和 `M4` 阶段的可运行基线，定义见：
 
 ```text
 doc/开发文档/mvp_implementation_plan.md
@@ -21,6 +21,9 @@ doc/开发文档/mvp_implementation_plan.md
 - 最小 repository：`app/repositories/roles.py`
 - 文件上传与只读归档：`POST /api/v1/projects/{project_id}/assets/upload`
 - M3 兼容上传入口：`POST /api/v1/assets/upload`
+- 页面详情接口：`GET /api/v1/pages/{page_id}`
+- 最新标注版本接口：`GET /api/v1/pages/{page_id}/annotation/latest`
+- 创建标注版本接口：`POST /api/v1/pages/{page_id}/annotation/revisions`
 - 依赖文件：
   - `requirements.txt`
   - `requirements-dev.txt`
@@ -165,3 +168,48 @@ curl -X POST "http://127.0.0.1:8000/api/v1/assets/upload" `
 成功后返回 `asset_id`、`document_id` 和 `page_id`。文件会写入 `STORAGE_ROOT/raw/assets/<sha256前两位>/`，数据库 `assets` 表记录 `sha256`、`size_bytes`、`mime_type` 和相对 `storage_path`。重复上传相同 sha256 文件会复用已有 asset，不覆盖 raw 原始文件。
 
 上传接口使用 `Authorization: Bearer <token>` 鉴权，并要求当前用户在项目内具备 `can_upload_assets` capability。
+
+## M4 页面与标注 revision 验收
+
+API path 中的 `{page_id}` 使用 `pages.public_id`，不是数据库内部主键。
+
+读取页面：
+
+```powershell
+curl "http://127.0.0.1:8000/api/v1/pages/page_xxx" `
+  -H "Authorization: Bearer $TOKEN"
+```
+
+创建整页标注 revision：
+
+```powershell
+curl -X POST "http://127.0.0.1:8000/api/v1/pages/page_xxx/annotation/revisions" `
+  -H "Authorization: Bearer $TOKEN" `
+  -H "Content-Type: application/json" `
+  -d "{\"schema_version\":\"k12_annotation_v0.1\",\"page_id\":\"page_xxx\",\"k12_annotations\":[{\"id\":\"ann_001\",\"type\":\"question_block\",\"label_namespace\":\"k12\",\"geometry\":{\"bbox_xyxy\":[10,20,110,120]},\"read_order\":1,\"attributes\":{},\"source_refs\":[],\"status\":\"draft\"}],\"relations\":[]}"
+```
+
+如果页面已经存在 latest revision，保存请求应使用包装格式并带上 `base_revision_id`；否则后端返回 `409`，要求前端重新加载或合并：
+
+```powershell
+curl -X POST "http://127.0.0.1:8000/api/v1/pages/page_xxx/annotation/revisions" `
+  -H "Authorization: Bearer $TOKEN" `
+  -H "Content-Type: application/json" `
+  -d "{\"base_revision_id\":\"rev_xxx\",\"change_summary\":\"继续标注\",\"annotation_json\":{\"schema_version\":\"k12_annotation_v0.1\",\"page_id\":\"page_xxx\",\"k12_annotations\":[],\"relations\":[]}}"
+```
+
+读取最新 revision：
+
+```powershell
+curl "http://127.0.0.1:8000/api/v1/pages/page_xxx/annotation/latest" `
+  -H "Authorization: Bearer $TOKEN"
+```
+
+保存 revision 时会把 JSON 写入 `STORAGE_ROOT/annotations/revisions/`，登记 `annotation_revisions`，并重建 `annotation_objects` / `relation_objects` 索引。只有合法 bbox 会写入文件；bbox 缺失 `quad` / `polygon` 时会由后端自动生成矩形几何。
+
+权限要求：
+
+```text
+GET 页面和 latest revision：can_view_project
+POST 创建 revision：can_create_annotation_revision
+```
