@@ -16,6 +16,7 @@ import { annotationsApi as saveApi } from '@/api/annotations'
 import { ApiClientError } from '@/api/client'
 import AnnotationCanvas from '@/components/annotation/AnnotationCanvas.vue'
 import type { AnnotationObject } from '@/composables/useAnnotationStore'
+import { SAVE_STATUS_KEY, UPDATE_SAVE_STATUS_KEY, computeCanWriteAnnotation, type SaveStatus } from './workspaceGuards'
 import {
   MousePointer2,
   SquareDashedMousePointer,
@@ -43,16 +44,6 @@ const pageId = computed(() => route.params.page_id as string)
 const revisionId = computed(() => route.query.revision_id as string | undefined)
 
 type ActiveTool = 'select' | 'bbox' | 'read_order' | 'pan'
-
-type SaveStatus =
-  | 'saved'
-  | 'dirty'
-  | 'autosave_pending'
-  | 'autosaving'
-  | 'autosave_failed'
-  | 'manual_saving'
-  | 'conflict'
-  | 'readonly'
 
 function getReadonlyCapabilities(): Capabilities {
   return {
@@ -94,7 +85,6 @@ const thumbnailUrls = ref<Record<string, string>>({})
 const currentIndex = computed(() => pageList.value.findIndex(p => p.page_id === pageId.value))
 const hasPrev = computed(() => currentIndex.value > 0)
 const hasNext = computed(() => currentIndex.value < pageList.value.length - 1)
-const canWrite = computed(() => Boolean(capabilities.value?.can_create_annotation_revision) && !revisionId.value)
 
 const isReadonly = computed(() => {
   if (revisionId.value) return true
@@ -102,8 +92,8 @@ const isReadonly = computed(() => {
   return false
 })
 
-const saveStatus = inject<Ref<SaveStatus> | null>('saveStatus', null)
-const updateSaveStatus = inject<((status: SaveStatus) => void) | undefined>('updateSaveStatus')
+const saveStatus = inject<Ref<SaveStatus> | null>(SAVE_STATUS_KEY, null)
+const updateSaveStatus = inject<((status: SaveStatus) => void) | undefined>(UPDATE_SAVE_STATUS_KEY)
 
 function syncWorkspaceMeta(status?: SaveStatus) {
   if (status) {
@@ -113,18 +103,14 @@ function syncWorkspaceMeta(status?: SaveStatus) {
   }
 }
 
-const canWriteAnnotation = computed(() => {
-  if (!canWrite.value) return false
-  if (isReadonly.value) return false
-  if (saving.value) return false
+const canWriteAnnotation = computed(() => computeCanWriteAnnotation({
+  can_create_annotation_revision: Boolean(capabilities.value?.can_create_annotation_revision),
+  revision_id: revisionId.value ?? null,
+  saving: saving.value,
+  save_status: saveStatus?.value ?? null,
+}))
 
-  const currentStatus = saveStatus?.value
-  if (currentStatus === 'readonly') return false
-  if (currentStatus === 'conflict') return false
-  if (currentStatus === 'autosaving') return false
-  if (currentStatus === 'manual_saving') return false
-  return true
-})
+const canWrite = computed(() => canWriteAnnotation.value)
 
 // ── 工具栏状态 ──
 const activeTool = ref<ActiveTool>('select')

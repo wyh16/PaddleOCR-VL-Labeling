@@ -17,6 +17,7 @@ import { useI18n } from 'vue-i18n'
 import { useAuth } from '@/composables/useAuth'
 import { pagesApi } from '@/api/pages'
 import { projectsApi } from '@/api/projects'
+import { SAVE_STATUS_KEY, UPDATE_SAVE_STATUS_KEY, type SaveStatus } from './workspaceGuards'
 import {
   Search,
   Keyboard,
@@ -53,14 +54,12 @@ async function loadBreadcrumb() {
 }
 
 // ── 保存状态 ──
-type SaveStatus = 'saved' | 'dirty' | 'autosave_pending' | 'autosaving' | 'autosave_failed' | 'manual_saving' | 'conflict' | 'readonly'
-
 const saveStatus = ref<SaveStatus>('saved')
 
 function updateSaveStatus(status: SaveStatus) { saveStatus.value = status }
 
-provide('saveStatus', saveStatus)
-provide('updateSaveStatus', updateSaveStatus)
+provide(SAVE_STATUS_KEY, saveStatus)
+provide(UPDATE_SAVE_STATUS_KEY, updateSaveStatus)
 
 // ── 离页守卫 ──
 function needsLeaveConfirmation(): boolean {
