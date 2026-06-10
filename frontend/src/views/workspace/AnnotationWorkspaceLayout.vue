@@ -98,7 +98,7 @@ onUnmounted(() => {
     <!-- ═══ 顶部面包屑栏 ═══ -->
     <header class="h-12 bg-surface border-b border-border flex items-center px-4 shrink-0 z-sticky">
       <!-- 面包屑 -->
-      <nav class="flex items-center gap-1.5 text-caption text-text-secondary" aria-label="Breadcrumb">
+      <nav class="flex items-center gap-1.5 text-caption text-text-secondary" :aria-label="t('common.breadcrumb')">
         <router-link :to="{ name: 'projects.index' }" class="hover:text-text transition-colors">
           {{ t('nav.projects') }}
         </router-link>
@@ -145,7 +145,7 @@ onUnmounted(() => {
         <div class="flex items-center gap-0.5 ml-1">
           <button class="w-7 h-7 flex items-center justify-center rounded-md text-text-secondary hover:bg-surface-muted transition-colors relative">
             <Bell class="w-4 h-4" />
-            <span class="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 bg-danger text-white text-micro rounded-full flex items-center justify-center">12</span>
+            <span class="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 bg-danger text-white text-micro rounded-full flex items-center justify-center">!</span>
           </button>
           <button class="w-7 h-7 flex items-center justify-center rounded-md text-text-secondary hover:bg-surface-muted transition-colors">
             <HelpCircle class="w-4 h-4" />
@@ -158,7 +158,7 @@ onUnmounted(() => {
         <!-- 用户头像 -->
         <div class="flex items-center gap-1.5 ml-1 pl-2 border-l border-border">
           <div class="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center text-caption font-medium text-primary">{{ user?.username?.charAt(0)?.toUpperCase() || 'U' }}</div>
-          <span class="text-caption text-text">{{ user?.username || 'User' }}</span>
+          <span class="text-caption text-text">{{ user?.username || t('common.noData') }}</span>
           <ChevronDown class="w-3 h-3 text-text-muted" />
         </div>
       </div>
@@ -171,34 +171,34 @@ onUnmounted(() => {
         <div class="text-micro text-text-tertiary mb-1">{{ t('project.taskProgress') }}</div>
         <div class="flex items-center gap-2">
           <div class="flex-1 h-1.5 bg-surface-alt rounded-full overflow-hidden">
-            <div class="h-full bg-primary rounded-full" style="width: 68%"></div>
+            <div class="h-full bg-primary rounded-full" style="width: 0%"></div>
           </div>
-          <span class="text-body-medium text-text">68%</span>
+          <span class="text-body-medium text-text">--</span>
         </div>
-        <div class="text-micro text-text-muted mt-0.5">340 / 500</div>
+        <div class="text-micro text-text-muted mt-0.5">-- / --</div>
       </div>
 
       <!-- 图片进度 -->
       <div class="max-w-32">
         <div class="text-micro text-text-tertiary mb-1">{{ t('project.imageProgress') }}</div>
-        <div class="text-heading text-text">12 <span class="text-text-muted text-body">/</span> 50</div>
+        <div class="text-heading text-text">-- <span class="text-text-muted text-body">/</span> --</div>
       </div>
 
       <!-- 当前图片 -->
       <div class="max-w-32">
         <div class="text-micro text-text-tertiary mb-1">{{ t('project.currentImage') }}</div>
-        <div class="text-heading text-text">12 <span class="text-text-muted text-body">/</span> 200</div>
+        <div class="text-heading text-text">-- <span class="text-text-muted text-body">/</span> --</div>
       </div>
 
       <!-- 标注时长 -->
       <div class="max-w-32">
         <div class="text-micro text-text-tertiary mb-1">{{ t('project.annotationTime') }}</div>
-        <div class="text-heading font-mono text-text">01:23:45</div>
+        <div class="text-heading font-mono text-text">--:--:--</div>
       </div>
 
       <!-- 保存状态 -->
       <div class="max-w-40">
-        <div class="text-micro text-text-tertiary mb-1">{{ t('annotation.saveStatus.saved') }}</div>
+        <div class="text-micro text-text-tertiary mb-1">{{ t('common.save') }}</div>
         <div class="flex items-center gap-1.5">
           <span
             :class="[
@@ -220,8 +220,8 @@ onUnmounted(() => {
       <!-- Revision -->
       <div class="max-w-24">
         <div class="text-micro text-text-tertiary mb-1">{{ t('project.revision') }}</div>
-        <div class="text-heading text-text">12</div>
-        <div class="text-micro text-primary">base: 11</div>
+        <div class="text-heading text-text">--</div>
+        <div class="text-micro text-primary">{{ t('project.base') }}: --</div>
       </div>
     </div>
 
@@ -241,7 +241,7 @@ onUnmounted(() => {
           {{ t('workspace.autoSaveOn') }}
         </div>
         <span>{{ t('workspace.autoSaveInterval') }}</span>
-        <span class="ml-auto">{{ t('workspace.currentUser') }}：{{ user?.username || 'User' }}（{{ t('workspace.roleAnnotator') }}）</span>
+        <span class="ml-auto">{{ t('workspace.currentUser') }}：{{ user?.username || t('common.noData') }}（{{ t('workspace.roleAnnotator') }}）</span>
         <div class="flex items-center gap-1.5">
           {{ t('workspace.networkStatus') }}：
           <span class="w-1.5 h-1.5 rounded-full bg-success"></span>

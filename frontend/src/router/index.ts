@@ -106,19 +106,6 @@ const routes: RouteRecordRaw[] = [
           navKey: 'settings',
         } as AppRouteMeta,
       },
-      {
-        path: 'users',
-        name: 'users.index',
-        component: () => import('@/views/app/UsersView.vue'),
-        meta: {
-          requiresAuth: true,
-          layout: 'app',
-          titleKey: 'nav.users',
-          projectContextSource: 'none',
-          navKey: 'users',
-          capability: 'can_manage_system_users',
-        } as AppRouteMeta,
-      },
     ],
   },
   {
@@ -196,7 +183,7 @@ router.beforeEach(async (to, _from, next) => {
   }
 
   const meta = to.meta as AppRouteMeta
-  const { ensureSession } = useAuth()
+  const { ensureSession, fetchUser, user } = useAuth()
 
   // 确保会话已初始化
   const loggedIn = await ensureSession()
@@ -208,6 +195,21 @@ router.beforeEach(async (to, _from, next) => {
       query: { redirect: to.fullPath },
     })
     return
+  }
+
+  // 路由 capability 守卫（系统级能力优先闭环）
+  if (meta.capability) {
+    if (!user.value && loggedIn) {
+      await fetchUser()
+    }
+    const currentUser = user.value
+
+    if (meta.capability === 'can_manage_system_users') {
+      if (!currentUser?.is_system_admin) {
+        next({ name: 'error.forbidden' })
+        return
+      }
+    }
   }
 
   // 已登录访问登录/注册页 → 跳转 redirect 或默认页

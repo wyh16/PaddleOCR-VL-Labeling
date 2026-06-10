@@ -16,7 +16,6 @@ import {
   PenTool,
   ShieldCheck,
   Download,
-  Users,
   Settings,
   LogOut,
   ChevronDown,
@@ -46,7 +45,6 @@ const navItems = computed<NavItem[]>(() => [
   { key: 'workspace', icon: PenTool, routeName: 'projects.index' },
   { key: 'qc', icon: ShieldCheck, disabled: true },
   { key: 'exports', icon: Download, disabled: true },
-  { key: 'users', icon: Users, routeName: 'users.index', disabled: !user.value?.is_system_admin },
   { key: 'settings', icon: Settings, routeName: 'settings.index' },
 ])
 </script>
@@ -110,7 +108,7 @@ const navItems = computed<NavItem[]>(() => [
             {{ user?.username?.charAt(0)?.toUpperCase() || 'U' }}
           </div>
           <div class="flex-1 min-w-0">
-            <div class="text-body-medium text-text truncate">{{ user?.username || 'User' }}</div>
+            <div class="text-body-medium text-text truncate">{{ user?.username || t('common.noData') }}</div>
             <div class="flex items-center gap-1 text-micro text-success">
               <span class="w-1.5 h-1.5 rounded-full bg-success"></span>
               {{ t('workspace.online') }}

@@ -45,6 +45,15 @@ class AnnotationRepositoryProtocol(Protocol):
 
     def get_revision_asset(self, db: object, *, revision: Any) -> Any | None: ...
 
+    def list_revisions(
+        self,
+        db: object,
+        *,
+        page_public_id: str,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> tuple[list[Any], int]: ...
+
     def create_revision(self, db: object, **kwargs: Any) -> Any: ...
 
     def rebuild_indexes(
@@ -64,6 +73,8 @@ class AnnotationJsonStorageProtocol(Protocol):
         revision_public_id: str,
         annotation_json: dict[str, Any],
     ) -> StoredJsonAsset: ...
+
+    def read_revision_json(self, storage_path: str) -> dict[str, Any]: ...
 
 
 @dataclass(frozen=True)
@@ -108,6 +119,8 @@ def build_revision_indexes(
         )
         label_name = _read_label_name(annotation, index)
         geometry = _require_geometry(annotation, index)
+        had_quad = geometry.get("quad") is not None
+        had_polygon = geometry.get("polygon") is not None
         bbox = _normalize_bbox(
             geometry.get("bbox_xyxy"),
             page_width=page_width,
@@ -118,6 +131,12 @@ def build_revision_indexes(
             geometry["bbox_xyxy"] = bbox
             geometry.setdefault("quad", _bbox_to_polygon(bbox))
             geometry.setdefault("polygon", _bbox_to_polygon(bbox))
+            if "geometry_source" not in geometry:
+                geometry["geometry_source"] = (
+                    "manual" if (had_quad or had_polygon) else "auto_generated"
+                )
+        elif "geometry_source" not in geometry and (had_quad or had_polygon):
+            geometry["geometry_source"] = "manual"
 
         quad = _normalize_polygon_like(
             geometry.get("quad"),
@@ -243,6 +262,18 @@ def get_annotation_revision(
     }
 
 
+def list_annotation_revisions(
+    *,
+    db: Session,
+    page_public_id: str,
+    limit: int = 50,
+    offset: int = 0,
+    repository: AnnotationRepositoryProtocol | None = None,
+) -> tuple[list[Any], int]:
+    repo = repository or DEFAULT_REPOSITORY
+    return repo.list_revisions(db, page_public_id=page_public_id, limit=limit, offset=offset)
+
+
 def create_annotation_revision(
     *,
     db: Session,
@@ -282,6 +313,12 @@ def create_annotation_revision(
         latest_revision=latest_revision,
         base_revision_id=base_revision_id,
     )
+    latest_annotation_json = _read_latest_annotation_json(
+        db=db,
+        latest_revision=latest_revision,
+        repository=repo,
+        storage=json_storage,
+    )
     latest_revision_no = repo.get_latest_revision_no(
         db, page_id=int(page_context["page_id"])
     )
@@ -293,6 +330,7 @@ def create_annotation_revision(
         revision_public_id=revision_public_id,
         revision_no=revision_no,
         latest_revision=latest_revision,
+        latest_annotation_json=latest_annotation_json,
         created_by=created_by,
         change_summary=change_summary,
         change_reason=change_reason,
@@ -348,6 +386,7 @@ def _with_revision_history(
     revision_public_id: str,
     revision_no: int,
     latest_revision: Any | None,
+    latest_annotation_json: dict[str, Any] | None,
     created_by: int,
     change_summary: str | None,
     change_reason: str | None,
@@ -365,9 +404,7 @@ def _with_revision_history(
         )
         revision_json["image"].setdefault("sha256", page_context.get("image_sha256"))
 
-    history = revision_json.get("history")
-    if not isinstance(history, list):
-        history = []
+    history = _read_history_from_annotation_json(latest_annotation_json)
     history.append(
         {
             "revision_id": revision_public_id,
@@ -381,6 +418,34 @@ def _with_revision_history(
     )
     revision_json["history"] = history
     return revision_json
+
+
+def _read_latest_annotation_json(
+    *,
+    db: Session,
+    latest_revision: Any | None,
+    repository: AnnotationRepositoryProtocol,
+    storage: AnnotationJsonStorageProtocol,
+) -> dict[str, Any] | None:
+    if latest_revision is None:
+        return None
+
+    latest_asset = repository.get_revision_asset(db, revision=latest_revision)
+    if latest_asset is None:
+        raise AnnotationRevisionNotFoundError("当前 latest revision JSON 资产不存在。")
+    return storage.read_revision_json(latest_asset.storage_path)
+
+
+def _read_history_from_annotation_json(
+    annotation_json: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
+    if annotation_json is None:
+        return []
+
+    raw_history = annotation_json.get("history")
+    if not isinstance(raw_history, list):
+        return []
+    return deepcopy([item for item in raw_history if isinstance(item, dict)])
 
 
 def _ensure_payload_page_matches_path(

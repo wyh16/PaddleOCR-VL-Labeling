@@ -1,16 +1,71 @@
 /**
  * 标注状态管理
  * 管理标注对象列表、选中状态、撤销/重做
+ *
+ * 标注对象结构对齐后端 annotation_json 契约：
+ *   doc/开发文档/后端/backend_api_reference.md §7.3
+ *   doc/开发文档/前端/annotation_workspace_interaction_spec.md §11
  */
 import { ref, computed } from 'vue'
 import type { AnnotationRevision, AnnotationDraft } from '@/api/annotations'
 
+// ── 几何类型 ──
+
+/** 四点框：4 个 [x, y] 顶点，顺时针从左上开始 */
+export type Quad = [[number, number], [number, number], [number, number], [number, number]]
+
+/** 多边形：至少 3 个 [x, y] 顶点 */
+export type Polygon = [number, number][]
+
+/** 几何数据，至少包含 bbox_xyxy、quad 或 polygon 之一 */
+export interface AnnotationGeometry {
+  bbox_xyxy?: [number, number, number, number]
+  quad?: Quad
+  polygon?: Polygon
+  geometry_source?: 'manual' | 'auto_generated'
+}
+
+// ── 标注对象（对齐后端 k12_annotations 元素） ──
+
 export interface AnnotationObject {
   id: string
-  label: string
-  bbox_xyxy: [number, number, number, number]  // [xmin, ymin, xmax, ymax]
-  read_order: number
-  color: string
+  type: string                        // 标签类型，如 question_block、answer_area
+  label_namespace: string             // 标签命名空间，K12 场景固定 'k12'
+  geometry: AnnotationGeometry
+  read_order?: number
+  attributes: Record<string, unknown>
+  source_refs: unknown[]
+  status: 'draft' | 'active' | 'deleted'
+  color: string                       // 前端展示用，不保存到后端
+}
+
+// ── 后端 annotation_json 中的单条标注（只读，用于解析） ──
+
+interface BackendAnnotation {
+  id: string
+  type?: string
+  label_name?: string
+  label_namespace?: string
+  geometry: {
+    bbox_xyxy?: [number, number, number, number]
+    quad?: Quad
+    polygon?: Polygon
+    geometry_source?: string
+  }
+  read_order?: number
+  attributes?: Record<string, unknown>
+  source_refs?: unknown[]
+  status?: string
+}
+
+// ── 后端 annotation_json 整页结构 ──
+
+export interface AnnotationJson {
+  schema_version: string
+  page_id: string
+  k12_annotations: BackendAnnotation[]
+  relations: unknown[]
+  history?: unknown[]
 }
 
 // 默认标签颜色映射
@@ -34,11 +89,69 @@ function generateId(): string {
   return `obj-${Date.now()}-${nextId++}`
 }
 
+// ── 几何工具 ──
+
+/** 从 bbox_xyxy 生成 quad（顺时针 4 点） */
+function bboxToQuad(bbox: [number, number, number, number]): Quad {
+  const [xmin, ymin, xmax, ymax] = bbox
+  return [[xmin, ymin], [xmax, ymin], [xmax, ymax], [xmin, ymax]]
+}
+
+/** 从 bbox_xyxy 生成 polygon（矩形 4 点） */
+function bboxToPolygon(bbox: [number, number, number, number]): Polygon {
+  const [xmin, ymin, xmax, ymax] = bbox
+  return [[xmin, ymin], [xmax, ymin], [xmax, ymax], [xmin, ymax]]
+}
+
+/** 确保 bbox_xyxy 的 xmin < xmax, ymin < ymax */
+function normalizeBbox(bbox: [number, number, number, number]): [number, number, number, number] {
+  let [xmin, ymin, xmax, ymax] = bbox
+  if (xmin > xmax) [xmin, xmax] = [xmax, xmin]
+  if (ymin > ymax) [ymin, ymax] = [ymax, ymin]
+  return [xmin, ymin, xmax, ymax]
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), max)
+}
+
+function clampBboxToBounds(
+  bbox: [number, number, number, number],
+  bounds: { width: number; height: number } | null,
+): [number, number, number, number] {
+  const normalized = normalizeBbox(bbox)
+  if (!bounds) return normalized
+
+  const maxX = Math.max(bounds.width, 0)
+  const maxY = Math.max(bounds.height, 0)
+
+  return [
+    clamp(normalized[0], 0, maxX),
+    clamp(normalized[1], 0, maxY),
+    clamp(normalized[2], 0, maxX),
+    clamp(normalized[3], 0, maxY),
+  ]
+}
+
+/** 从 bbox 重建完整 geometry（quad + polygon + geometry_source） */
+function buildGeometry(
+  bbox: [number, number, number, number],
+  geometrySource: 'manual' | 'auto_generated' = 'manual',
+): AnnotationGeometry {
+  return {
+    bbox_xyxy: bbox,
+    quad: bboxToQuad(bbox),
+    polygon: bboxToPolygon(bbox),
+    geometry_source: geometrySource,
+  }
+}
+
 export function useAnnotationStore() {
   const objects = ref<AnnotationObject[]>([])
   const selectedId = ref<string | null>(null)
   const baseRevisionId = ref<string | undefined>(undefined)
   const revisionNo = ref(0)
+  const imageBounds = ref<{ width: number; height: number } | null>(null)
 
   // ── 撤销/重做 ──
   const undoStack = ref<string[]>([])  // JSON snapshots
@@ -85,14 +198,23 @@ export function useAnnotationStore() {
   }
 
   // ── 增删改 ──
+  function setImageBounds(width: number, height: number) {
+    imageBounds.value = { width, height }
+  }
+
   function addObject(bbox: [number, number, number, number], label: string) {
     saveSnapshot()
-    const maxOrder = objects.value.reduce((max, o) => Math.max(max, o.read_order), 0)
+    const normalized = clampBboxToBounds(bbox, imageBounds.value)
+    const maxOrder = objects.value.reduce((max, o) => Math.max(max, o.read_order ?? 0), 0)
     const obj: AnnotationObject = {
       id: generateId(),
-      label,
-      bbox_xyxy: bbox,
+      type: label,
+      label_namespace: 'k12',
+      geometry: buildGeometry(normalized),
       read_order: maxOrder + 1,
+      attributes: {},
+      source_refs: [],
+      status: 'draft',
       color: getDefaultColor(label),
     }
     objects.value.push(obj)
@@ -100,12 +222,17 @@ export function useAnnotationStore() {
     return obj
   }
 
-  function updateObject(id: string, patch: Partial<Pick<AnnotationObject, 'label' | 'bbox_xyxy' | 'read_order' | 'color'>>) {
+  function updateObject(id: string, patch: Partial<Pick<AnnotationObject, 'type' | 'read_order' | 'color'>> & { bbox_xyxy?: [number, number, number, number] }) {
     saveSnapshot()
     const obj = objects.value.find(o => o.id === id)
     if (!obj) return
-    if (patch.label !== undefined) obj.label = patch.label
-    if (patch.bbox_xyxy !== undefined) obj.bbox_xyxy = patch.bbox_xyxy
+    if (patch.type !== undefined) {
+      obj.type = patch.type
+      obj.color = getDefaultColor(patch.type)
+    }
+    if (patch.bbox_xyxy !== undefined) {
+      obj.geometry = buildGeometry(clampBboxToBounds(patch.bbox_xyxy, imageBounds.value))
+    }
     if (patch.read_order !== undefined) obj.read_order = patch.read_order
     if (patch.color !== undefined) obj.color = patch.color
   }
@@ -123,9 +250,22 @@ export function useAnnotationStore() {
   /** 移动 bbox（增量，图片坐标） */
   function moveObject(id: string, dx: number, dy: number) {
     const obj = objects.value.find(o => o.id === id)
-    if (!obj) return
-    const [xmin, ymin, xmax, ymax] = obj.bbox_xyxy
-    obj.bbox_xyxy = [xmin + dx, ymin + dy, xmax + dx, ymax + dy]
+    if (!obj || !obj.geometry.bbox_xyxy) return
+    const [xmin, ymin, xmax, ymax] = obj.geometry.bbox_xyxy
+    const width = xmax - xmin
+    const height = ymax - ymin
+
+    if (imageBounds.value) {
+      const maxX = Math.max(imageBounds.value.width - width, 0)
+      const maxY = Math.max(imageBounds.value.height - height, 0)
+      const nextXmin = clamp(xmin + dx, 0, maxX)
+      const nextYmin = clamp(ymin + dy, 0, maxY)
+      obj.geometry = buildGeometry([nextXmin, nextYmin, nextXmin + width, nextYmin + height])
+      return
+    }
+
+    const newBbox: [number, number, number, number] = [xmin + dx, ymin + dy, xmax + dx, ymax + dy]
+    obj.geometry = buildGeometry(normalizeBbox(newBbox))
   }
 
   /** 开始拖拽前保存快照（供 AnnotationCanvas 在 mousedown 时调用） */
@@ -136,8 +276,8 @@ export function useAnnotationStore() {
   /** 调整 bbox 大小（通过控制点索引 0-7） */
   function resizeObject(id: string, handleIndex: number, imgX: number, imgY: number) {
     const obj = objects.value.find(o => o.id === id)
-    if (!obj) return
-    let [xmin, ymin, xmax, ymax] = obj.bbox_xyxy
+    if (!obj || !obj.geometry.bbox_xyxy) return
+    let [xmin, ymin, xmax, ymax] = obj.geometry.bbox_xyxy
 
     // 控制点: 0=上中, 1=右上, 2=右中, 3=右下, 4=下中, 5=左下, 6=左中, 7=左上
     if (handleIndex === 0 || handleIndex === 7 || handleIndex === 6) ymin = imgY  // 上边
@@ -145,11 +285,7 @@ export function useAnnotationStore() {
     if (handleIndex === 3 || handleIndex === 4 || handleIndex === 5) ymax = imgY  // 下边
     if (handleIndex === 5 || handleIndex === 6 || handleIndex === 7) xmin = imgX  // 左边
 
-    // 确保 xmin < xmax, ymin < ymax
-    if (xmin > xmax) [xmin, xmax] = [xmax, xmin]
-    if (ymin > ymax) [ymin, ymax] = [ymax, ymin]
-
-    obj.bbox_xyxy = [xmin, ymin, xmax, ymax]
+    obj.geometry = buildGeometry(clampBboxToBounds([xmin, ymin, xmax, ymax], imageBounds.value))
   }
 
   /** 设置阅读顺序 */
@@ -171,13 +307,23 @@ export function useAnnotationStore() {
     baseRevisionId.value = revision.id
     revisionNo.value = revision.revision_no
 
-    const data = revision.data as { objects?: Array<{ id: string; label: string; geometry: { bbox_xyxy: [number, number, number, number] }; read_order: number }> }
-    objects.value = (data.objects || []).map(o => ({
-      id: o.id,
-      label: o.label,
-      bbox_xyxy: o.geometry.bbox_xyxy,
-      read_order: o.read_order || 0,
-      color: getDefaultColor(o.label),
+    const data = revision.data as unknown as AnnotationJson
+    const annotations = data.k12_annotations || []
+    objects.value = annotations.map((a: BackendAnnotation) => ({
+      id: a.id,
+      type: a.type || a.label_name || 'question_block',
+      label_namespace: a.label_namespace || 'k12',
+      geometry: {
+        bbox_xyxy: a.geometry?.bbox_xyxy,
+        quad: a.geometry?.quad,
+        polygon: a.geometry?.polygon,
+        geometry_source: (a.geometry?.geometry_source as 'manual' | 'auto_generated') || 'auto_generated',
+      },
+      read_order: a.read_order,
+      attributes: a.attributes || {},
+      source_refs: a.source_refs || [],
+      status: (a.status as 'draft' | 'active' | 'deleted') || 'active',
+      color: getDefaultColor(a.type || a.label_name || 'question_block'),
     }))
 
     undoStack.value = []
@@ -185,19 +331,32 @@ export function useAnnotationStore() {
     selectedId.value = null
   }
 
-  /** 导出为 AnnotationDraft */
+  /** 导出为 AnnotationDraft（对齐后端 annotation_json 契约） */
   function toDraft(pageId: string): AnnotationDraft {
+    const annotationJson: AnnotationJson = {
+      schema_version: 'k12_annotation_v0.1',
+      page_id: pageId,
+      k12_annotations: objects.value.map(o => ({
+        id: o.id,
+        type: o.type,
+        label_namespace: o.label_namespace,
+        geometry: {
+          bbox_xyxy: o.geometry.bbox_xyxy,
+          quad: o.geometry.quad,
+          polygon: o.geometry.polygon,
+          geometry_source: o.geometry.geometry_source,
+        },
+        read_order: o.read_order,
+        attributes: o.attributes,
+        source_refs: o.source_refs,
+        status: o.status,
+      })),
+      relations: [],
+    }
     return {
       page_id: pageId,
-      base_revision_id: baseRevisionId.value || '',
-      data: {
-        objects: objects.value.map(o => ({
-          id: o.id,
-          label: o.label,
-          geometry: { bbox_xyxy: o.bbox_xyxy },
-          read_order: o.read_order,
-        })),
-      },
+      base_revision_id: baseRevisionId.value ?? null,
+      data: annotationJson as unknown as Record<string, unknown>,
     }
   }
 
@@ -207,8 +366,10 @@ export function useAnnotationStore() {
     selectedObject,
     baseRevisionId,
     revisionNo,
+    imageBounds,
     canUndo,
     canRedo,
+    setImageBounds,
     select,
     addObject,
     updateObject,

@@ -3,7 +3,6 @@
  * 系统设置页
  */
 import { useI18n } from 'vue-i18n'
-import { NInput, NFormItem, NSelect } from 'naive-ui'
 import { Globe, User, Bell, Shield } from 'lucide-vue-next'
 
 const { t, locale } = useI18n()
@@ -37,13 +36,18 @@ function changeLocale(lang: string) {
             <h2 class="text-subheading text-text">{{ t('settings.language') }}</h2>
           </div>
           <div class="max-w-xs">
-            <NFormItem :label="t('settings.language')">
-              <NSelect
+            <label class="block">
+              <span class="mb-1 block text-caption text-text-secondary">{{ t('settings.language') }}</span>
+              <select
                 :value="locale"
-                :options="languageOptions"
-                @update:value="changeLocale"
-              />
-            </NFormItem>
+                class="h-9 w-full rounded-md border border-border bg-surface px-3 text-body text-text outline-none transition-colors focus:border-primary"
+                @change="changeLocale(($event.target as HTMLSelectElement).value)"
+              >
+                <option v-for="option in languageOptions" :key="option.value" :value="option.value">
+                  {{ option.label }}
+                </option>
+              </select>
+            </label>
           </div>
         </section>
 
@@ -54,12 +58,24 @@ function changeLocale(lang: string) {
             <h2 class="text-subheading text-text">{{ t('settings.personalInfo') }}</h2>
           </div>
           <div class="max-w-md space-y-4">
-            <NFormItem :label="t('auth.username')">
-              <NInput :value="''" :placeholder="t('auth.username')" readonly />
-            </NFormItem>
-            <NFormItem :label="t('auth.email')">
-              <NInput :value="''" :placeholder="t('auth.email')" readonly />
-            </NFormItem>
+            <label class="block">
+              <span class="mb-1 block text-caption text-text-secondary">{{ t('auth.username') }}</span>
+              <input
+                :value="''"
+                :placeholder="t('auth.username')"
+                readonly
+                class="h-9 w-full rounded-md border border-border bg-surface-muted px-3 text-body text-text-muted outline-none"
+              />
+            </label>
+            <label class="block">
+              <span class="mb-1 block text-caption text-text-secondary">{{ t('auth.email') }}</span>
+              <input
+                :value="''"
+                :placeholder="t('auth.email')"
+                readonly
+                class="h-9 w-full rounded-md border border-border bg-surface-muted px-3 text-body text-text-muted outline-none"
+              />
+            </label>
           </div>
         </section>
 

@@ -6,7 +6,7 @@
  *
  * 参考：doc/开发文档/前端/frontend_routing_spec.md 第 14 章
  */
-import { ref, computed, onMounted, onUnmounted, inject, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, inject, watch, type Ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { pagesApi, type Page, type Capabilities } from '@/api/pages'
@@ -14,7 +14,6 @@ import { annotationsApi, type AnnotationRevision } from '@/api/annotations'
 import { qcApi, type QcIssue } from '@/api/qc'
 import { annotationsApi as saveApi } from '@/api/annotations'
 import { ApiClientError } from '@/api/client'
-import { NButton } from 'naive-ui'
 import AnnotationCanvas from '@/components/annotation/AnnotationCanvas.vue'
 import type { AnnotationObject } from '@/composables/useAnnotationStore'
 import {
@@ -43,6 +42,39 @@ const router = useRouter()
 const pageId = computed(() => route.params.page_id as string)
 const revisionId = computed(() => route.query.revision_id as string | undefined)
 
+type ActiveTool = 'select' | 'bbox' | 'read_order' | 'pan'
+
+type SaveStatus =
+  | 'saved'
+  | 'dirty'
+  | 'autosave_pending'
+  | 'autosaving'
+  | 'autosave_failed'
+  | 'manual_saving'
+  | 'conflict'
+  | 'readonly'
+
+function getReadonlyCapabilities(): Capabilities {
+  return {
+    can_view_project: true,
+    can_create_annotation_revision: false,
+    can_submit_revision: false,
+    can_review_revision: false,
+    can_create_export_job: false,
+    can_download_export: false,
+    can_manage_project_members: false,
+    can_manage_labels: false,
+    can_manage_relations: false,
+    can_lock_revision: false,
+    can_unlock_revision: false,
+    can_rollback_revision: false,
+    can_upload_assets: false,
+    can_import_pages: false,
+    can_view_audit_log: false,
+    can_manage_system_users: false,
+  }
+}
+
 // ── 状态 ──
 const loading = ref(true)
 const error = ref('')
@@ -62,16 +94,18 @@ const thumbnailUrls = ref<Record<string, string>>({})
 const currentIndex = computed(() => pageList.value.findIndex(p => p.page_id === pageId.value))
 const hasPrev = computed(() => currentIndex.value > 0)
 const hasNext = computed(() => currentIndex.value < pageList.value.length - 1)
+const canWrite = computed(() => Boolean(capabilities.value?.can_create_annotation_revision) && !revisionId.value)
 
 const isReadonly = computed(() => {
   if (revisionId.value) return true
-  if (capabilities.value && !capabilities.value.can_edit) return true
+  if (!capabilities.value?.can_create_annotation_revision) return true
   return false
 })
 
-const updateSaveStatus = inject<((status: string) => void) | undefined>('updateSaveStatus')
+const saveStatus = inject<Ref<SaveStatus> | null>('saveStatus', null)
+const updateSaveStatus = inject<((status: SaveStatus) => void) | undefined>('updateSaveStatus')
 
-function syncWorkspaceMeta(status?: string) {
+function syncWorkspaceMeta(status?: SaveStatus) {
   if (status) {
     updateSaveStatus?.(status)
   } else {
@@ -79,15 +113,28 @@ function syncWorkspaceMeta(status?: string) {
   }
 }
 
+const canWriteAnnotation = computed(() => {
+  if (!canWrite.value) return false
+  if (isReadonly.value) return false
+  if (saving.value) return false
+
+  const currentStatus = saveStatus?.value
+  if (currentStatus === 'readonly') return false
+  if (currentStatus === 'conflict') return false
+  if (currentStatus === 'autosaving') return false
+  if (currentStatus === 'manual_saving') return false
+  return true
+})
+
 // ── 工具栏状态 ──
-const activeTool = ref<'select' | 'rectangle' | 'readingOrder' | 'pan'>('select')
+const activeTool = ref<ActiveTool>('select')
 const zoomLevel = ref(100)
 const canvasRef = ref<InstanceType<typeof AnnotationCanvas> | null>(null)
 
 const tools = [
-  { key: 'select', icon: MousePointer2, label: 'annotation.tools.select', shortcut: 'R' },
-  { key: 'rectangle', icon: SquareDashedMousePointer, label: 'annotation.tools.rectangle', shortcut: 'W' },
-  { key: 'readingOrder', icon: BookOpen, label: 'annotation.tools.readingOrder', shortcut: 'O' },
+  { key: 'select', icon: MousePointer2, label: 'annotation.tools.select', shortcut: 'V' },
+  { key: 'bbox', icon: SquareDashedMousePointer, label: 'annotation.tools.bbox', shortcut: 'W' },
+  { key: 'read_order', icon: BookOpen, label: 'annotation.tools.read_order', shortcut: 'R' },
   { key: 'pan', icon: Hand, label: 'annotation.tools.pan', shortcut: 'Space' },
 ]
 
@@ -107,6 +154,11 @@ const labels = [
 ]
 const activeLabel = ref('question_block')
 
+function getLabelText(type: string) {
+  const label = labels.find(item => item.key === type)
+  return label ? t(`annotation.labels.${label.i18nKey}`) : type
+}
+
 // ── 选中对象属性 ──
 const selectedObject = ref<AnnotationObject | null>(null)
 
@@ -123,20 +175,24 @@ function onObjectsChanged() {
   const store = canvasRef.value.store
   objectCount.value = store.objects.value.length
   selectedObject.value = store.selectedObject.value
-  syncWorkspaceMeta('dirty')
+  if (canWriteAnnotation.value) {
+    syncWorkspaceMeta('dirty')
+  }
 }
 
 // ── 属性编辑 ──
 function onLabelChange(e: Event) {
+  if (!canWriteAnnotation.value) return
   const label = (e.target as HTMLSelectElement).value
   if (selectedObject.value && canvasRef.value) {
     const color = labels.find(l => l.key === label)?.color || '#5e6ad2'
-    canvasRef.value.store.updateObject(selectedObject.value.id, { label, color })
+    canvasRef.value.store.updateObject(selectedObject.value.id, { type: label, color })
     onObjectsChanged()
   }
 }
 
 function onReadOrderChange(e: Event) {
+  if (!canWriteAnnotation.value) return
   const order = parseInt((e.target as HTMLInputElement).value, 10)
   if (selectedObject.value && canvasRef.value && !isNaN(order)) {
     canvasRef.value.store.setReadOrder(selectedObject.value.id, order)
@@ -146,18 +202,30 @@ function onReadOrderChange(e: Event) {
 
 // ── 保存 ──
 async function saveAnnotation() {
-  if (!canvasRef.value || !page.value || saving.value) return
+  if (!canvasRef.value || !page.value || !canWriteAnnotation.value) return
   saving.value = true
-  syncWorkspaceMeta('saving')
+  syncWorkspaceMeta('manual_saving')
   try {
     const draft = canvasRef.value.store.toDraft(page.value.page_id)
     const result = await saveApi.save(page.value.page_id, draft)
     canvasRef.value.store.baseRevisionId.value = result.id
     canvasRef.value.store.revisionNo.value = result.revision_no
+    revision.value = result
     syncWorkspaceMeta('saved')
   } catch (e) {
     if (e instanceof ApiClientError && e.status === 409) {
       syncWorkspaceMeta('conflict')
+    } else if (e instanceof ApiClientError && e.status === 403) {
+      if (page.value) {
+        try {
+          capabilities.value = await pagesApi.getCapabilities(String(page.value.project_id))
+        } catch {
+          capabilities.value = getReadonlyCapabilities()
+        }
+      }
+      error.value = t('errors.forbidden')
+      errorCode.value = 403
+      syncWorkspaceMeta('readonly')
     } else {
       syncWorkspaceMeta('autosave_failed')
     }
@@ -197,16 +265,19 @@ function onZoomLevelUpdate(val: number) {
 
 // ── 撤销/重做/删除 ──
 function onUndo() {
+  if (!canWriteAnnotation.value) return
   canvasRef.value?.store.undo()
   onObjectsChanged()
 }
 
 function onRedo() {
+  if (!canWriteAnnotation.value) return
   canvasRef.value?.store.redo()
   onObjectsChanged()
 }
 
 function onDelete() {
+  if (!canWriteAnnotation.value) return
   canvasRef.value?.store.deleteSelected()
   onObjectsChanged()
 }
@@ -229,33 +300,40 @@ async function loadPageList(projectId: string) {
   try {
     const res = await pagesApi.list(projectId)
     pageList.value = res.items
-    // 异步加载缩略图 URL
+
     for (const p of res.items) {
       if (!thumbnailUrls.value[p.page_id]) {
         try {
-          const authHeaders = { Authorization: `Bearer ${sessionStorage.getItem('k12.access_token') || ''}` }
-          const urlRes = await fetch(`/api/v1/pages/${p.page_id}/image`, { headers: authHeaders })
-          if (urlRes.ok) {
-            const { url } = await urlRes.json()
-            const imgRes = await fetch(url, { headers: authHeaders })
-            if (imgRes.ok) {
-              const blob = await imgRes.blob()
-              thumbnailUrls.value[p.page_id] = URL.createObjectURL(blob)
-            }
-          }
+          const { url } = await pagesApi.getImageUrl(p.page_id)
+          thumbnailUrls.value[p.page_id] = url
         } catch { /* 缩略图加载失败不影响功能 */ }
       }
     }
   } catch { /* 页面列表加载失败不阻止工作台 */ }
 }
 
+async function loadImageUrl(targetPageId: string): Promise<string | null> {
+  try {
+    const { url } = await pagesApi.getImageUrl(targetPageId)
+    return url
+  } catch {
+    return null
+  }
+}
+
 // ── 键盘快捷键 ──
 function onKeyDown(e: KeyboardEvent) {
+  const target = e.target as HTMLElement | null
+  const tagName = target?.tagName
+  if (target?.isContentEditable || tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT') {
+    return
+  }
+
   // 快捷键切换工具
   if (!e.ctrlKey && !e.metaKey) {
-    if (e.key === 'r' || e.key === 'R') { activeTool.value = 'select'; e.preventDefault() }
-    if (e.key === 'w' || e.key === 'W') { activeTool.value = 'rectangle'; e.preventDefault() }
-    if (e.key === 'o' || e.key === 'O') { activeTool.value = 'readingOrder'; e.preventDefault() }
+    if (e.key === 'v' || e.key === 'V') { activeTool.value = 'select'; e.preventDefault() }
+    if ((e.key === 'w' || e.key === 'W') && canWrite.value) { activeTool.value = 'bbox'; e.preventDefault() }
+    if ((e.key === 'r' || e.key === 'R') && canWrite.value) { activeTool.value = 'read_order'; e.preventDefault() }
     // 页面切换
     if (e.key === 'a' || e.key === 'A') { goToPrevPage(); e.preventDefault() }
     if (e.key === 'd' || e.key === 'D') { goToNextPage(); e.preventDefault() }
@@ -263,7 +341,9 @@ function onKeyDown(e: KeyboardEvent) {
   // Ctrl+S 保存
   if ((e.ctrlKey || e.metaKey) && e.key === 's') {
     e.preventDefault()
-    saveAnnotation()
+    if (canWriteAnnotation.value) {
+      saveAnnotation()
+    }
   }
 }
 
@@ -305,40 +385,25 @@ async function loadWorkspace() {
 
     try {
       capabilities.value = await pagesApi.getCapabilities(String(page.value.project_id))
-    } catch {
-      capabilities.value = { can_edit: false, can_review: false, can_export: false, can_manage: false }
+    } catch (e) {
+      if (e instanceof ApiClientError && e.status === 403) {
+        error.value = t('errors.forbidden')
+        errorCode.value = 403
+        syncWorkspaceMeta('readonly')
+        return
+      }
+      capabilities.value = getReadonlyCapabilities()
     }
 
     // 加载同项目页面列表（不阻塞主流程）
     loadPageList(String(page.value.project_id))
 
-    // 加载图片
-    try {
-      const authHeaders = { Authorization: `Bearer ${sessionStorage.getItem('k12.access_token') || ''}` }
-      // 先获取图片访问 URL（返回 JSON { url, expires_at }）
-      const urlRes = await fetch(`/api/v1/pages/${page.value.page_id}/image`, { headers: authHeaders })
-      if (urlRes.ok) {
-        const { url } = await urlRes.json()
-        // 再用拿到的 URL 请求真实图片二进制
-        const imgRes = await fetch(url, { headers: authHeaders })
-        if (imgRes.ok) {
-          const blob = await imgRes.blob()
-          imageUrl.value = URL.createObjectURL(blob)
-        } else {
-          imageUrl.value = `https://placehold.co/${page.value.width}x${page.value.height}/f8f8f8/333?text=${encodeURIComponent(page.value.filename || page.value.page_id)}`
-        }
-      } else {
-        imageUrl.value = `https://placehold.co/${page.value.width}x${page.value.height}/f8f8f8/333?text=${encodeURIComponent(page.value.filename || page.value.page_id)}`
-      }
-    } catch {
-      imageUrl.value = `https://placehold.co/${page.value.width}x${page.value.height}/f8f8f8/333?text=${encodeURIComponent(page.value.filename || page.value.page_id)}`
-    }
+    imageUrl.value = await loadImageUrl(page.value.page_id)
 
     // 加载标注
     try {
       if (revisionId.value) {
-        const revisions = await annotationsApi.listRevisions(pageId.value)
-        revision.value = revisions.find(r => r.id === revisionId.value) || null
+        revision.value = await annotationsApi.getRevision(pageId.value, revisionId.value)
       } else {
         revision.value = await annotationsApi.getLatest(pageId.value)
       }
@@ -355,6 +420,7 @@ async function loadWorkspace() {
 
     // 将 revision 数据加载到 store
     if (canvasRef.value) {
+      canvasRef.value.store.setImageBounds(page.value.width, page.value.height)
       canvasRef.value.store.loadFromRevision(revision.value)
       objectCount.value = canvasRef.value.store.objects.value.length
     }
@@ -385,10 +451,12 @@ onMounted(() => { loadWorkspace() })
     <div v-else-if="error" class="flex-1 flex items-center justify-center">
       <div class="text-center">
         <p class="text-heading text-text mb-2">{{ error }}</p>
-        <p v-if="errorCode" class="text-caption text-text-muted mb-4">Error {{ errorCode }}</p>
-        <NButton type="primary" @click="loadWorkspace">
+        <p v-if="errorCode" class="text-caption text-text-muted mb-4">{{ errorCode }}</p>
+        <button type="button"
+          class="inline-flex items-center justify-center rounded-md bg-primary px-3 py-2 text-caption font-medium text-white transition-colors hover:bg-primary-hover"
+          @click="loadWorkspace">
           {{ t('common.retry') }}
-        </NButton>
+        </button>
       </div>
     </div>
 
@@ -403,8 +471,10 @@ onMounted(() => { loadWorkspace() })
             activeTool === tool.key
               ? 'bg-primary/10 text-primary border border-primary/30'
               : 'text-text-secondary hover:bg-surface-muted hover:text-text border border-transparent',
+            (!canWrite && tool.key !== 'select' && tool.key !== 'pan') ? 'opacity-40 cursor-not-allowed' : '',
           ]" :aria-label="t(tool.label)" :title="`${t(tool.label)} (${tool.shortcut})`"
-            @click="activeTool = tool.key as any">
+            :disabled="!canWrite && tool.key !== 'select' && tool.key !== 'pan'"
+            @click="activeTool = tool.key as ActiveTool">
             <component :is="tool.icon" class="w-4 h-4" />
           </button>
         </div>
@@ -473,8 +543,8 @@ onMounted(() => { loadWorkspace() })
           <!-- 保存 -->
           <button
             class="w-8 h-8 flex items-center justify-center rounded-md text-text-secondary hover:bg-surface-muted hover:text-text transition-colors"
-            :aria-label="t('common.save')" :title="`${t('common.save')} (Ctrl+S)`" :disabled="saving"
-            @click="saveAnnotation">
+            :class="{ 'opacity-40 cursor-not-allowed': !canWriteAnnotation }" :aria-label="t('common.save')"
+            :title="`${t('common.save')} (Ctrl+S)`" :disabled="!canWriteAnnotation" @click="saveAnnotation">
             <Loader2 v-if="saving" class="w-4 h-4 animate-spin" />
             <Save v-else class="w-4 h-4" />
           </button>
@@ -482,14 +552,16 @@ onMounted(() => { loadWorkspace() })
           <!-- 撤销/重做 -->
           <button
             class="w-8 h-8 flex items-center justify-center rounded-md text-text-secondary hover:bg-surface-muted hover:text-text transition-colors"
-            :class="{ 'opacity-40 cursor-not-allowed': !canvasRef?.store.canUndo.value }"
-            :aria-label="t('annotation.tools.undo')" :title="`${t('annotation.tools.undo')} (Ctrl+Z)`" @click="onUndo">
+            :class="{ 'opacity-40 cursor-not-allowed': !canvasRef?.store.canUndo.value || !canWriteAnnotation }"
+            :disabled="!canvasRef?.store.canUndo.value || !canWriteAnnotation" :aria-label="t('annotation.tools.undo')"
+            :title="`${t('annotation.tools.undo')} (Ctrl+Z)`" @click="onUndo">
             <Undo2 class="w-4 h-4" />
           </button>
           <button
             class="w-8 h-8 flex items-center justify-center rounded-md text-text-secondary hover:bg-surface-muted hover:text-text transition-colors"
-            :class="{ 'opacity-40 cursor-not-allowed': !canvasRef?.store.canRedo.value }"
-            :aria-label="t('annotation.tools.redo')" :title="`${t('annotation.tools.redo')} (Ctrl+Y)`" @click="onRedo">
+            :class="{ 'opacity-40 cursor-not-allowed': !canvasRef?.store.canRedo.value || !canWriteAnnotation }"
+            :disabled="!canvasRef?.store.canRedo.value || !canWriteAnnotation" :aria-label="t('annotation.tools.redo')"
+            :title="`${t('annotation.tools.redo')} (Ctrl+Y)`" @click="onRedo">
             <Redo2 class="w-4 h-4" />
           </button>
 
@@ -499,7 +571,8 @@ onMounted(() => { loadWorkspace() })
           <!-- 删除 -->
           <button
             class="w-8 h-8 flex items-center justify-center rounded-md text-text-secondary hover:bg-danger-bg hover:text-danger transition-colors"
-            :class="{ 'opacity-40 cursor-not-allowed': !selectedObject }" :aria-label="t('annotation.tools.delete')"
+            :class="{ 'opacity-40 cursor-not-allowed': !selectedObject || !canWriteAnnotation }"
+            :aria-label="t('annotation.tools.delete')" :disabled="!selectedObject || !canWriteAnnotation"
             :title="`${t('annotation.tools.delete')} (Delete)`" @click="onDelete">
             <Trash2 class="w-4 h-4" />
           </button>
@@ -507,7 +580,7 @@ onMounted(() => { loadWorkspace() })
           <!-- 全屏 -->
           <button
             class="w-8 h-8 flex items-center justify-center rounded-md text-text-secondary hover:bg-surface-muted hover:text-text transition-colors"
-            aria-label="Fullscreen">
+            :aria-label="t('common.fullscreen')">
             <Fullscreen class="w-4 h-4" />
           </button>
         </div>
@@ -545,7 +618,7 @@ onMounted(() => { loadWorkspace() })
         <div class="w-32 bg-surface-muted border-r border-border-soft flex flex-col shrink-0">
           <div class="p-2 border-b border-border-soft">
             <span class="text-micro text-text-tertiary uppercase tracking-wider">{{ t('annotation.labels.title')
-              }}</span>
+            }}</span>
           </div>
           <div class="flex-1 overflow-y-auto p-1.5 space-y-0.5">
             <button v-for="label in labels" :key="label.key" :class="[
@@ -562,8 +635,8 @@ onMounted(() => { loadWorkspace() })
 
         <!-- ═══ 中间画布区 ═══ -->
         <AnnotationCanvas ref="canvasRef" :image-url="imageUrl" :active-tool="activeTool" :active-label="activeLabel"
-          class="flex-1" @update:zoom-level="onZoomLevelUpdate" @object-selected="onObjectSelected"
-          @objects-changed="onObjectsChanged" />
+          :readonly="!canWriteAnnotation" class="flex-1" @update:zoom-level="onZoomLevelUpdate"
+          @object-selected="onObjectSelected" @objects-changed="onObjectsChanged" />
 
         <!-- ═══ 右侧：属性编辑 ═══ -->
         <div class="w-64 bg-surface border-l border-border flex flex-col shrink-0">
@@ -575,7 +648,7 @@ onMounted(() => { loadWorkspace() })
               <!-- 标签选择 -->
               <div class="mb-2">
                 <label class="text-micro text-text-tertiary block mb-1">{{ t('annotation.properties.label') }}</label>
-                <select :value="selectedObject.label"
+                <select :value="selectedObject.type"
                   class="w-full h-7 px-2 text-caption bg-surface border border-border rounded-md text-text focus:outline-none focus:ring-2 focus:ring-focus"
                   @change="onLabelChange">
                   <option v-for="label in labels" :key="label.key" :value="label.key">
@@ -586,7 +659,8 @@ onMounted(() => { loadWorkspace() })
 
               <!-- 阅读顺序 -->
               <div class="mb-2">
-                <label class="text-micro text-text-tertiary block mb-1">Read Order</label>
+                <label class="text-micro text-text-tertiary block mb-1">{{ t('annotation.properties.readOrder')
+                  }}</label>
                 <input type="number" :value="selectedObject.read_order" min="0"
                   class="w-full h-7 px-2 text-caption bg-surface border border-border rounded-md text-text focus:outline-none focus:ring-2 focus:ring-focus"
                   @change="onReadOrderChange" />
@@ -595,9 +669,10 @@ onMounted(() => { loadWorkspace() })
               <!-- 坐标 -->
               <div class="mb-2">
                 <label class="text-micro text-text-tertiary block mb-1">{{ t('annotation.properties.coordinates')
-                  }}</label>
+                }}</label>
                 <div class="grid grid-cols-4 gap-1">
-                  <input v-for="(val, idx) in selectedObject.bbox_xyxy" :key="idx" type="text" :value="Math.round(val)"
+                  <input v-for="(val, idx) in (selectedObject.geometry.bbox_xyxy || [])" :key="idx" type="text"
+                    :value="Math.round(val)"
                     class="h-7 px-1.5 text-caption font-mono bg-surface border border-border rounded-md text-text text-center"
                     readonly />
                 </div>
@@ -606,7 +681,7 @@ onMounted(() => { loadWorkspace() })
               <!-- ID -->
               <div class="flex justify-between text-micro text-text-tertiary">
                 <span>{{ t('annotation.properties.id') }}: <span class="font-mono">{{ selectedObject.id.slice(0, 12)
-                    }}</span></span>
+                }}</span></span>
               </div>
             </template>
 
@@ -628,7 +703,7 @@ onMounted(() => { loadWorkspace() })
                   : 'text-text-secondary hover:bg-surface-muted',
               ]" @click="canvasRef?.store.select(obj.id); onObjectSelected(obj.id)">
                 <span class="w-2.5 h-2.5 rounded-sm shrink-0" :style="{ backgroundColor: obj.color }"></span>
-                <span class="flex-1 truncate">{{ obj.label }}</span>
+                <span class="flex-1 truncate">{{ getLabelText(obj.type) }}</span>
                 <span class="text-micro text-text-muted">#{{ obj.read_order }}</span>
               </div>
             </div>
@@ -641,7 +716,7 @@ onMounted(() => { loadWorkspace() })
               <div class="flex items-center gap-1.5">
                 <kbd
                   class="font-mono text-text-tertiary bg-surface-alt border border-border rounded px-1 py-0.5">W</kbd>
-                <span class="text-text-secondary">{{ t('annotation.shortcuts.rectangleTool') }}</span>
+                <span class="text-text-secondary">{{ t('annotation.shortcuts.bboxTool') }}</span>
               </div>
               <div class="flex items-center gap-1.5">
                 <kbd
@@ -650,7 +725,7 @@ onMounted(() => { loadWorkspace() })
               </div>
               <div class="flex items-center gap-1.5">
                 <kbd
-                  class="font-mono text-text-tertiary bg-surface-alt border border-border rounded px-1 py-0.5">R</kbd>
+                  class="font-mono text-text-tertiary bg-surface-alt border border-border rounded px-1 py-0.5">V</kbd>
                 <span class="text-text-secondary">{{ t('annotation.shortcuts.selectTool') }}</span>
               </div>
               <div class="flex items-center gap-1.5">
@@ -660,8 +735,8 @@ onMounted(() => { loadWorkspace() })
               </div>
               <div class="flex items-center gap-1.5">
                 <kbd
-                  class="font-mono text-text-tertiary bg-surface-alt border border-border rounded px-1 py-0.5">O</kbd>
-                <span class="text-text-secondary">{{ t('annotation.shortcuts.readingOrderTool') }}</span>
+                  class="font-mono text-text-tertiary bg-surface-alt border border-border rounded px-1 py-0.5">R</kbd>
+                <span class="text-text-secondary">{{ t('annotation.shortcuts.readOrderTool') }}</span>
               </div>
               <div class="flex items-center gap-1.5">
                 <kbd
@@ -679,8 +754,8 @@ onMounted(() => { loadWorkspace() })
                 <span class="text-text-secondary">{{ t('annotation.shortcuts.save') }}</span>
               </div>
               <div class="flex items-center gap-1.5">
-                <kbd
-                  class="font-mono text-text-tertiary bg-surface-alt border border-border rounded px-1 py-0.5">A / D</kbd>
+                <kbd class="font-mono text-text-tertiary bg-surface-alt border border-border rounded px-1 py-0.5">A /
+                  D</kbd>
                 <span class="text-text-secondary">{{ t('workspace.prevPage') }}/{{ t('workspace.nextPage') }}</span>
               </div>
             </div>

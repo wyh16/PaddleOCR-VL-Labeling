@@ -7,7 +7,6 @@ import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAuth } from '@/composables/useAuth'
 import { ApiClientError } from '@/api/client'
-import { NInput, NFormItem, NButton, NAlert } from 'naive-ui'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -18,6 +17,7 @@ const username = ref('')
 const password = ref('')
 const loading = ref(false)
 const error = ref('')
+const registrationEnabled = import.meta.env.VITE_ENABLE_REGISTRATION === 'true'
 
 function isValidRedirect(redirect: string): boolean {
   if (!redirect.startsWith('/')) return false
@@ -65,40 +65,41 @@ async function handleLogin() {
     <h1 class="text-title text-center mb-6">{{ t('auth.login') }}</h1>
 
     <form @submit.prevent="handleLogin" class="space-y-4">
-      <NAlert v-if="error" type="error" :bordered="false" class="mb-4">
+      <div v-if="error" class="rounded-md border border-danger/30 bg-danger/5 px-3 py-2 text-caption text-danger">
         {{ error }}
-      </NAlert>
+      </div>
 
-      <NFormItem :label="t('auth.username')">
-        <NInput
-          v-model:value="username"
+      <label class="block">
+        <span class="mb-1 block text-caption text-text-secondary">{{ t('auth.username') }}</span>
+        <input
+          v-model="username"
           :placeholder="t('auth.username')"
           :disabled="loading"
+          class="h-9 w-full rounded-md border border-border bg-surface px-3 text-body text-text outline-none transition-colors placeholder:text-text-muted focus:border-primary disabled:cursor-not-allowed disabled:bg-surface-muted"
         />
-      </NFormItem>
+      </label>
 
-      <NFormItem :label="t('auth.password')">
-        <NInput
-          v-model:value="password"
+      <label class="block">
+        <span class="mb-1 block text-caption text-text-secondary">{{ t('auth.password') }}</span>
+        <input
+          v-model="password"
           type="password"
-          show-password-on="click"
           :placeholder="t('auth.password')"
           :disabled="loading"
+          class="h-9 w-full rounded-md border border-border bg-surface px-3 text-body text-text outline-none transition-colors placeholder:text-text-muted focus:border-primary disabled:cursor-not-allowed disabled:bg-surface-muted"
         />
-      </NFormItem>
+      </label>
 
-      <NButton
-        type="primary"
-        block
-        :loading="loading"
-        :disabled="!username || !password"
-        attr-type="submit"
+      <button
+        type="submit"
+        :disabled="loading || !username || !password"
+        class="inline-flex w-full items-center justify-center rounded-md bg-primary px-4 py-2 text-caption font-medium text-white transition-colors hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50"
       >
         {{ t('auth.login') }}
-      </NButton>
+      </button>
     </form>
 
-    <p class="mt-4 text-center text-sm text-text-muted">
+    <p v-if="registrationEnabled" class="mt-4 text-center text-sm text-text-muted">
       {{ t('auth.noAccount') }}
       <router-link :to="{ name: 'auth.register' }" class="text-link hover:underline">
         {{ t('auth.register') }}

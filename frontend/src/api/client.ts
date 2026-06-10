@@ -29,24 +29,35 @@ export class ApiClientError extends Error {
 
 const BASE_URL = '/api/v1'
 
-// ── Bearer JWT token 管理（sessionStorage 持久化，刷新不丢失） ──
-const TOKEN_KEY = 'k12.access_token'
+const TOKEN_STORAGE_KEY = 'k12.access_token'
+
+function getTokenStorage(): Storage | null {
+  try {
+    if (typeof window === 'undefined') return null
+    return window.sessionStorage
+  } catch {
+    return null
+  }
+}
+
+// ── Bearer token：内存优先，刷新后从 sessionStorage 恢复 ──
 let accessToken: string | null = null
 
 export function setToken(token: string) {
   accessToken = token
-  try { sessionStorage.setItem(TOKEN_KEY, token) } catch { /* quota exceeded */ }
+  getTokenStorage()?.setItem(TOKEN_STORAGE_KEY, token)
 }
 
 export function getToken(): string | null {
   if (accessToken) return accessToken
-  try { accessToken = sessionStorage.getItem(TOKEN_KEY) } catch { /* private mode */ }
-  return accessToken
+  const stored = getTokenStorage()?.getItem(TOKEN_STORAGE_KEY) || null
+  accessToken = stored
+  return stored
 }
 
 export function clearToken() {
   accessToken = null
-  try { sessionStorage.removeItem(TOKEN_KEY) } catch { /* ignore */ }
+  getTokenStorage()?.removeItem(TOKEN_STORAGE_KEY)
 }
 
 /**

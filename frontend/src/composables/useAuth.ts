@@ -24,21 +24,26 @@ export function useAuth() {
       return null
     }
 
+    if (loading.value) {
+      return user.value
+    }
+
     loading.value = true
     try {
       user.value = await authApi.me()
+      initialized.value = true
       return user.value
     } catch (error) {
       if (error instanceof ApiClientError && error.status === 401) {
         user.value = null
         clearToken()
+        initialized.value = true
         return null
       }
-      // 其他错误（网络等）保留当前状态，不清空
+      // 其他错误（网络、5xx 等）保留 token 和用户态，让后续有机会重试
       return user.value
     } finally {
       loading.value = false
-      initialized.value = true
     }
   }
 
@@ -77,7 +82,7 @@ export function useAuth() {
    * 是否已登录
    */
   function isAuthenticated(): boolean {
-    return user.value !== null
+    return Boolean(getToken())
   }
 
   /**
@@ -85,10 +90,17 @@ export function useAuth() {
    * 路由守卫调用，避免每次都请求后端
    */
   async function ensureSession(): Promise<boolean> {
-    if (!initialized.value) {
-      await fetchUser()
+    if (!getToken()) {
+      user.value = null
+      initialized.value = true
+      return false
     }
-    return isAuthenticated()
+
+    if (!initialized.value && !loading.value) {
+      void fetchUser()
+    }
+
+    return true
   }
 
   return {

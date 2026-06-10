@@ -5,6 +5,9 @@
  * 渲染层：固定视口 Canvas（setTransform 矩阵渲染）
  * 交互层：SVG overlay（viewBox 与 Canvas 逻辑尺寸一致）
  * 标注层：BBoxOverlay（视口坐标系）
+ *
+ * 工具模式：select | bbox | read_order | pan
+ * 快捷键：参见 annotation_workspace_interaction_spec.md §15.1
  */
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useCanvasRenderer } from '@/composables/useCanvasRenderer'
@@ -13,8 +16,9 @@ import BBoxOverlay from './BBoxOverlay.vue'
 
 interface Props {
   imageUrl: string | null
-  activeTool: 'select' | 'rectangle' | 'readingOrder' | 'pan'
+  activeTool: 'select' | 'bbox' | 'read_order' | 'pan'
   activeLabel: string
+  readonly: boolean
 }
 
 const props = defineProps<Props>()
@@ -53,12 +57,14 @@ const svgViewBox = computed(() => `0 0 ${renderer.viewport.value.w} ${renderer.v
 // ── 将标注对象从原图坐标转换为视口坐标 ──
 const viewportObjects = computed(() => {
   return store.objects.value.map(obj => {
-    const [xmin, ymin, xmax, ymax] = obj.bbox_xyxy
+    const bbox = obj.geometry.bbox_xyxy
+    if (!bbox) return { ...obj, viewportBbox: [0, 0, 0, 0] as [number, number, number, number] }
+    const [xmin, ymin, xmax, ymax] = bbox
     const tl = renderer.imageToViewport(xmin, ymin)
     const br = renderer.imageToViewport(xmax, ymax)
     return {
       ...obj,
-      bbox_xyxy: [tl.x, tl.y, br.x, br.y] as [number, number, number, number],
+      viewportBbox: [tl.x, tl.y, br.x, br.y] as [number, number, number, number],
     }
   })
 })
@@ -133,8 +139,8 @@ function onMouseDown(e: MouseEvent) {
     return
   }
 
-  // 矩形工具：画新框
-  if (props.activeTool === 'rectangle') {
+  // bbox 工具：画新框
+  if (props.activeTool === 'bbox' && !props.readonly) {
     isDragging.value = true
     dragType.value = 'draw'
     drawStartViewport.value = { x: screenX, y: screenY }
@@ -224,14 +230,16 @@ function onBBoxSelect(id: string) {
   store.select(id)
   emit('object-selected', id)
 
-  if (props.activeTool === 'readingOrder') {
-    const maxOrder = store.objects.value.reduce((max, o) => Math.max(max, o.read_order), 0)
+  if (props.activeTool === 'read_order') {
+    if (props.readonly) return
+    const maxOrder = store.objects.value.reduce((max, o) => Math.max(max, o.read_order ?? 0), 0)
     store.setReadOrder(id, maxOrder + 1)
     emit('objects-changed')
   }
 }
 
 function onBBoxDragStart(id: string, e: MouseEvent) {
+  if (props.readonly) return
   if (props.activeTool !== 'select') return
   e.stopPropagation()
 
@@ -251,6 +259,7 @@ function onBBoxDragStart(id: string, e: MouseEvent) {
 }
 
 function onBBoxHandleDragStart(id: string, handleIndex: number, e: MouseEvent) {
+  if (props.readonly) return
   e.stopPropagation()
   store.savePreDragSnapshot()
   isDragging.value = true
@@ -259,29 +268,63 @@ function onBBoxHandleDragStart(id: string, handleIndex: number, e: MouseEvent) {
   dragHandleIndex.value = handleIndex
 }
 
-// ── 键盘快捷键 ──
+// ── 键盘快捷键（对齐 annotation_workspace_interaction_spec.md §15.1） ──
 const spaceHeld = ref(false)
 
 function onKeyDown(e: KeyboardEvent) {
+  // 忽略输入框内的按键（§15.3）
+  const tag = (e.target as HTMLElement)?.tagName
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+
+  // Space: 临时平移
   if (e.key === ' ') {
     e.preventDefault()
     spaceHeld.value = true
   }
-  if (e.key === 'Delete' || e.key === 'Backspace') {
+
+  // Delete/Backspace: 删除选中对象（§15.1）
+  if (!props.readonly && (e.key === 'Delete' || e.key === 'Backspace')) {
     if (store.selectedId.value) {
       store.deleteSelected()
       emit('objects-changed')
     }
   }
-  if (e.ctrlKey && e.key === 'z') {
+
+  // Ctrl+Z: 撤销（§15.1）
+  if (!props.readonly && e.ctrlKey && e.key === 'z') {
     e.preventDefault()
     store.undo()
     emit('objects-changed')
   }
-  if (e.ctrlKey && e.key === 'y') {
+
+  // Ctrl+Y / Ctrl+Shift+Z: 重做（§15.1）
+  if (!props.readonly && e.ctrlKey && (e.key === 'y' || (e.shiftKey && e.key === 'Z'))) {
     e.preventDefault()
     store.redo()
     emit('objects-changed')
+  }
+
+  // 方向键: 微调选中 bbox 1px, Shift+方向键 10px（§15.1, §9）
+  if (!props.readonly && ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key) && store.selectedId.value) {
+    e.preventDefault()
+    const step = e.shiftKey ? 10 : 1
+    let dx = 0, dy = 0
+    if (e.key === 'ArrowUp') dy = -step
+    if (e.key === 'ArrowDown') dy = step
+    if (e.key === 'ArrowLeft') dx = -step
+    if (e.key === 'ArrowRight') dx = step
+    store.savePreDragSnapshot()
+    store.moveObject(store.selectedId.value, dx, dy)
+    emit('objects-changed')
+  }
+
+  // Esc: 取消选择（§15.1）
+  if (e.key === 'Escape') {
+    store.select(null)
+    emit('object-selected', null)
+    tempRect.value = null
+    isDragging.value = false
+    dragType.value = null
   }
 }
 
@@ -304,8 +347,8 @@ onUnmounted(() => {
 // ── 光标样式 ──
 const cursorClass = computed(() => {
   if (spaceHeld.value || props.activeTool === 'pan') return 'cursor-grab'
-  if (props.activeTool === 'rectangle') return 'cursor-crosshair'
-  if (props.activeTool === 'readingOrder') return 'cursor-pointer'
+  if (props.activeTool === 'bbox') return 'cursor-crosshair'
+  if (props.activeTool === 'read_order') return 'cursor-pointer'
   return 'cursor-default'
 })
 </script>
@@ -346,7 +389,7 @@ const cursorClass = computed(() => {
           :key="obj.id"
           :obj="obj"
           :selected="store.selectedId.value === obj.id"
-          :label-name="obj.label"
+          :label-name="obj.type"
           @select="onBBoxSelect(obj.id)"
           @drag-start="(e) => onBBoxDragStart(obj.id, e)"
           @handle-drag-start="(idx, e) => onBBoxHandleDragStart(obj.id, idx, e)"

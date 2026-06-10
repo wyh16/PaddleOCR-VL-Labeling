@@ -3,7 +3,6 @@
  * 用户管理页（仅系统管理员可访问）
  */
 import { useI18n } from 'vue-i18n'
-import { NEmpty } from 'naive-ui'
 
 const { t } = useI18n()
 </script>
@@ -15,7 +14,9 @@ const { t } = useI18n()
         <h1 class="text-title text-text">{{ t('nav.users') }}</h1>
       </div>
 
-      <NEmpty :description="t('common.noData')" class="py-16" />
+      <div class="rounded-lg border border-dashed border-border bg-surface px-6 py-16 text-center text-text-muted">
+        {{ t('common.noData') }}
+      </div>
     </div>
   </div>
 </template>

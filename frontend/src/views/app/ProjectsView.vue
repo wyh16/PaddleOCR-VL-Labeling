@@ -6,16 +6,14 @@ import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { projectsApi, type Project } from '@/api/projects'
-import { NButton, NEmpty, NSpin, NModal, NInput, NFormItem, useMessage, useDialog } from 'naive-ui'
 import { FolderKanban, Plus, Trash2 } from 'lucide-vue-next'
 
 const { t } = useI18n()
 const router = useRouter()
-const message = useMessage()
-const dialog = useDialog()
 
 const projects = ref<Project[]>([])
 const loading = ref(true)
+const feedback = ref<{ type: 'success' | 'error'; text: string } | null>(null)
 
 // ── 创建项目弹窗 ──
 const showModal = ref(false)
@@ -47,37 +45,35 @@ async function handleCreate() {
     showModal.value = false
     formName.value = ''
     formDesc.value = ''
-    message.success(t('common.success'))
+    feedback.value = { type: 'success', text: t('common.success') }
     await loadProjects()
-  } catch (e) {
-    message.error(t('common.error'))
+  } catch {
+    feedback.value = { type: 'error', text: t('common.error') }
   } finally {
     creating.value = false
   }
 }
 
 function handleDelete(project: Project) {
-  dialog.warning({
-    title: t('common.confirm'),
-    content: `${t('common.delete')} "${project.name}"?`,
-    positiveText: t('common.confirm'),
-    negativeText: t('common.cancel'),
-    onPositiveClick: async () => {
-      try {
-        await projectsApi.delete(project.id)
-        message.success(t('common.success'))
-        await loadProjects()
-      } catch (e) {
-        message.error(t('common.error'))
-      }
-    },
-  })
+  if (!window.confirm(t('project.deleteConfirm', { name: project.name }))) return
+  projectsApi.delete(project.id)
+    .then(async () => {
+      feedback.value = { type: 'success', text: t('common.success') }
+      await loadProjects()
+    })
+    .catch(() => {
+      feedback.value = { type: 'error', text: t('common.error') }
+    })
 }
 
 onMounted(() => { loadProjects() })
 
 function goToProject(projectId: string) {
   router.push({ name: 'projects.detail', params: { project_id: projectId } })
+}
+
+function closeModal() {
+  showModal.value = false
 }
 </script>
 
@@ -87,26 +83,46 @@ function goToProject(projectId: string) {
       <!-- 页面头部 -->
       <div class="flex items-center justify-between mb-6">
         <h1 class="text-title text-text">{{ t('routes.projects.index') }}</h1>
-        <NButton type="primary" @click="showModal = true">
-          <template #icon><Plus /></template>
+        <button
+          type="button"
+          class="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-2 text-caption font-medium text-white transition-colors hover:bg-primary-hover"
+          @click="showModal = true"
+        >
+          <Plus class="w-4 h-4" />
           {{ t('project.create') }}
-        </NButton>
+        </button>
+      </div>
+
+      <div
+        v-if="feedback"
+        class="mb-4 rounded-md border px-3 py-2 text-caption"
+        :class="feedback.type === 'success'
+          ? 'border-success/30 bg-success-bg text-success'
+          : 'border-danger/30 bg-danger/5 text-danger'"
+      >
+        {{ feedback.text }}
       </div>
 
       <!-- Loading -->
       <div v-if="loading" class="flex justify-center py-16">
-        <NSpin size="large" />
+        <div class="h-8 w-8 rounded-full border-2 border-primary border-t-transparent animate-spin"></div>
       </div>
 
       <!-- Empty -->
-      <NEmpty v-else-if="projects.length === 0" :description="t('common.noData')" class="py-16">
-        <template #extra>
-          <NButton type="primary" @click="showModal = true">
-            <template #icon><Plus /></template>
+      <div
+        v-else-if="projects.length === 0"
+        class="rounded-lg border border-dashed border-border bg-surface px-6 py-16 text-center"
+      >
+        <p class="mb-4 text-body text-text-muted">{{ t('common.noData') }}</p>
+        <button
+          type="button"
+          class="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-2 text-caption font-medium text-white transition-colors hover:bg-primary-hover"
+          @click="showModal = true"
+        >
+          <Plus class="w-4 h-4" />
             {{ t('project.create') }}
-          </NButton>
-        </template>
-      </NEmpty>
+        </button>
+      </div>
 
       <!-- 项目列表 -->
       <div v-else class="space-y-2">
@@ -129,35 +145,61 @@ function goToProject(projectId: string) {
           </div>
           <div class="flex items-center gap-2 shrink-0">
             <span class="text-micro text-text-muted">{{ project.schema_version }}</span>
-            <NButton
-              size="small"
-              quaternary
-              type="error"
+            <button
+              type="button"
+              class="inline-flex items-center justify-center rounded-md p-2 text-danger transition-colors hover:bg-danger-bg"
               @click.stop="handleDelete(project)"
             >
-              <template #icon><Trash2 /></template>
-            </NButton>
+              <Trash2 class="w-4 h-4" />
+            </button>
           </div>
         </div>
       </div>
     </div>
 
     <!-- 创建项目弹窗 -->
-    <NModal v-model:show="showModal" preset="card" :title="t('project.create')" style="max-width: 480px;">
-      <NFormItem :label="t('project.name')">
-        <NInput v-model:value="formName" :placeholder="t('project.name')" />
-      </NFormItem>
-      <NFormItem :label="t('project.description')">
-        <NInput v-model:value="formDesc" type="textarea" :placeholder="t('project.description')" :rows="3" />
-      </NFormItem>
-      <template #footer>
+    <div
+      v-if="showModal"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+      @click="closeModal"
+    >
+      <div class="w-full max-w-md rounded-lg border border-border bg-surface p-5 shadow-modal" @click.stop>
+        <h2 class="mb-4 text-subheading text-text">{{ t('project.create') }}</h2>
+        <label class="mb-4 block">
+          <span class="mb-1 block text-caption text-text-secondary">{{ t('project.name') }}</span>
+          <input
+            v-model="formName"
+            :placeholder="t('project.name')"
+            class="h-9 w-full rounded-md border border-border bg-surface px-3 text-body text-text outline-none transition-colors placeholder:text-text-muted focus:border-primary"
+          />
+        </label>
+        <label class="mb-5 block">
+          <span class="mb-1 block text-caption text-text-secondary">{{ t('project.description') }}</span>
+          <textarea
+            v-model="formDesc"
+            :placeholder="t('project.description')"
+            rows="3"
+            class="w-full rounded-md border border-border bg-surface px-3 py-2 text-body text-text outline-none transition-colors placeholder:text-text-muted focus:border-primary"
+          ></textarea>
+        </label>
         <div class="flex justify-end gap-2">
-          <NButton @click="showModal = false">{{ t('common.cancel') }}</NButton>
-          <NButton type="primary" :loading="creating" :disabled="!formName.trim()" @click="handleCreate">
+          <button
+            type="button"
+            class="inline-flex items-center justify-center rounded-md border border-border bg-surface px-3 py-2 text-caption font-medium text-text transition-colors hover:bg-surface-muted"
+            @click="closeModal"
+          >
+            {{ t('common.cancel') }}
+          </button>
+          <button
+            type="button"
+            :disabled="creating || !formName.trim()"
+            class="inline-flex items-center justify-center rounded-md bg-primary px-3 py-2 text-caption font-medium text-white transition-colors hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50"
+            @click="handleCreate"
+          >
             {{ t('common.confirm') }}
-          </NButton>
+          </button>
         </div>
-      </template>
-    </NModal>
+      </div>
+    </div>
   </div>
 </template>

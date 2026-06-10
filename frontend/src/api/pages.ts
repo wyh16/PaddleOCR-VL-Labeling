@@ -55,10 +55,22 @@ export interface PageListResponse {
 }
 
 export interface Capabilities {
-  can_edit: boolean
-  can_review: boolean
-  can_export: boolean
-  can_manage: boolean
+  can_view_project: boolean
+  can_create_annotation_revision: boolean
+  can_submit_revision: boolean
+  can_review_revision: boolean
+  can_create_export_job: boolean
+  can_download_export: boolean
+  can_manage_project_members: boolean
+  can_manage_labels: boolean
+  can_manage_relations: boolean
+  can_lock_revision: boolean
+  can_unlock_revision: boolean
+  can_rollback_revision: boolean
+  can_upload_assets: boolean
+  can_import_pages: boolean
+  can_view_audit_log: boolean
+  can_manage_system_users: boolean
 }
 
 /** 将后端 PageReadData 解包为前端 Page */

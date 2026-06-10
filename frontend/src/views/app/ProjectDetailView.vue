@@ -8,7 +8,6 @@ import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { getToken } from '@/api/client'
 import { pagesApi, type Page } from '@/api/pages'
-import { NTabs, NTabPane, NButton, NEmpty } from 'naive-ui'
 import { FileCheck, AlertCircle, Loader2, FileImage, PenTool, X, RotateCcw, Upload } from 'lucide-vue-next'
 
 const { t } = useI18n()
@@ -40,6 +39,13 @@ function openWorkspace(pageId: string) {
 onMounted(() => { loadPages() })
 
 const activeTab = ref((route.query.tab as string) || 'pages')
+const tabs = ['pages', 'members', 'jobs', 'exports', 'settings'] as const
+
+function getPageStatusText(status: string) {
+  const key = `annotation.pages.status.${status}`
+  const text = t(key)
+  return text === key ? status : text
+}
 
 function switchTab(tab: string) {
   activeTab.value = tab
@@ -150,16 +156,11 @@ function uploadSingle(item: UploadItem) {
         loadPages()
       } catch {
         item.status = 'error'
-        item.error = '解析响应失败'
+        item.error = t('common.error')
       }
     } else {
       item.status = 'error'
-      try {
-        const body = JSON.parse(xhr.responseText)
-        item.error = body.detail || body.message || `HTTP ${xhr.status}`
-      } catch {
-        item.error = `HTTP ${xhr.status}`
-      }
+      item.error = t('upload.failed')
     }
   }
 
@@ -248,195 +249,164 @@ async function deletePage(pageId: string, e: Event) {
       </div>
 
       <!-- Tab 导航 -->
-      <NTabs v-model:value="activeTab" type="line" @update:value="switchTab">
-        <NTabPane name="pages" :tab="t('routes.projects.tabs.pages')">
-          <!-- 拖拽上传区域 -->
-          <div
-            class="relative border-2 border-dashed rounded-lg p-8 text-center transition-all duration-200 cursor-pointer"
-            :class="isDragOver
-              ? 'border-primary bg-primary/5'
-              : 'border-border hover:border-primary/40 hover:bg-surface-muted'"
-            @dragenter="onDragEnter"
-            @dragover="onDragOver"
-            @dragleave="onDragLeave"
-            @drop="onDrop"
-            @click="($refs.fileInput as HTMLInputElement).click()"
-          >
-            <input
-              ref="fileInput"
-              type="file"
-              multiple
-              accept="image/*"
-              class="hidden"
-              @change="onFileSelect"
-            />
-            <Upload class="w-8 h-8 mx-auto mb-3" :class="isDragOver ? 'text-primary' : 'text-text-muted'" />
-            <p class="text-body text-text mb-1">
-              {{ isDragOver ? t('upload.dropHere') : t('upload.selectFiles') }}
-            </p>
-            <p class="text-caption text-text-muted">
-              {{ isDragOver ? '' : t('upload.dragHint') }}
-            </p>
-          </div>
+      <div class="mb-6 flex flex-wrap gap-2 border-b border-border pb-3">
+        <button v-for="tab in tabs" :key="tab" type="button"
+          class="rounded-md px-3 py-2 text-caption font-medium transition-colors" :class="activeTab === tab
+            ? 'bg-primary/10 text-primary'
+            : 'text-text-secondary hover:bg-surface-muted hover:text-text'" @click="switchTab(tab)">
+          {{ t(`routes.projects.tabs.${tab}`) }}
+        </button>
+      </div>
 
-          <!-- 上传队列 -->
-          <div v-if="uploadItems.length > 0" class="mt-4">
-            <div class="flex items-center justify-between mb-3">
-              <span class="text-caption text-text-secondary">
-                {{ activeCount > 0 ? `${activeCount} ${t('upload.uploading')}` : `${uploadItems.length} ${t('upload.selectFiles')}` }}
-              </span>
-              <div class="flex gap-2">
-                <NButton size="small" @click="clearCompleted" :disabled="!uploadItems.some(i => i.status === 'done' || i.status === 'cancelled')">
-                  {{ t('common.close') }}
-                </NButton>
-                <NButton
-                  v-if="pendingCount > 0"
-                  type="primary"
-                  size="small"
-                  @click="startUpload"
-                >
-                  {{ t('upload.startUpload') }}
-                </NButton>
-              </div>
-            </div>
+      <section v-if="activeTab === 'pages'">
+        <!-- 拖拽上传区域 -->
+        <div
+          class="relative border-2 border-dashed rounded-lg p-8 text-center transition-all duration-200 cursor-pointer"
+          :class="isDragOver
+            ? 'border-primary bg-primary/5'
+            : 'border-border hover:border-primary/40 hover:bg-surface-muted'" @dragenter="onDragEnter"
+          @dragover="onDragOver" @dragleave="onDragLeave" @drop="onDrop"
+          @click="($refs.fileInput as HTMLInputElement).click()">
+          <input ref="fileInput" type="file" multiple accept="image/*" class="hidden" @change="onFileSelect" />
+          <Upload class="w-8 h-8 mx-auto mb-3" :class="isDragOver ? 'text-primary' : 'text-text-muted'" />
+          <p class="text-body text-text mb-1">
+            {{ isDragOver ? t('upload.dropHere') : t('upload.selectFiles') }}
+          </p>
+          <p class="text-caption text-text-muted">
+            {{ isDragOver ? '' : t('upload.dragHint') }}
+          </p>
+        </div>
 
-            <!-- 文件状态列表 -->
-            <div class="space-y-2">
-              <TransitionGroup name="upload-item">
-                <div
-                  v-for="item in uploadItems"
-                  :key="item.id"
-                  class="flex items-center gap-3 p-3 bg-surface rounded-lg border border-border transition-all duration-300"
-                  :class="{
-                    'opacity-0 -translate-y-2': item.fadeOut,
-                    'border-danger/40 bg-danger/5': item.status === 'error',
-                  }"
-                >
-                  <!-- 状态图标 -->
-                  <Loader2 v-if="item.status === 'uploading'" class="w-4 h-4 text-primary animate-spin shrink-0" />
-                  <FileCheck v-else-if="item.status === 'done'" class="w-4 h-4 text-success shrink-0" />
-                  <AlertCircle v-else-if="item.status === 'error'" class="w-4 h-4 text-danger shrink-0" />
-                  <X v-else-if="item.status === 'cancelled'" class="w-4 h-4 text-text-muted shrink-0" />
-                  <FileImage v-else class="w-4 h-4 text-text-muted shrink-0" />
-
-                  <!-- 文件信息 -->
-                  <div class="flex-1 min-w-0">
-                    <div class="flex items-center gap-2">
-                      <p class="text-body text-text truncate">{{ item.file.name }}</p>
-                      <span class="text-micro text-text-muted shrink-0">
-                        {{ (item.file.size / 1024 / 1024).toFixed(1) }}MB
-                      </span>
-                    </div>
-
-                    <!-- 进度条 -->
-                    <div v-if="item.status === 'uploading'" class="mt-1.5 h-1 bg-surface-muted rounded-full overflow-hidden">
-                      <div
-                        class="h-full bg-primary rounded-full transition-all duration-300"
-                        :style="{ width: item.progress + '%' }"
-                      ></div>
-                    </div>
-
-                    <!-- 结果信息 -->
-                    <p v-if="item.result" class="text-caption text-text-muted mt-1">
-                      {{ item.result.width }}×{{ item.result.height }}
-                    </p>
-
-                    <!-- 错误信息 -->
-                    <p v-if="item.error" class="text-caption text-danger mt-1">{{ item.error }}</p>
-                  </div>
-
-                  <!-- 操作按钮 -->
-                  <div class="flex items-center gap-1 shrink-0">
-                    <button
-                      v-if="item.status === 'uploading'"
-                      class="p-1 rounded hover:bg-surface-muted text-text-muted hover:text-text transition-colors"
-                      :title="t('common.cancel')"
-                      @click="cancelUpload(item)"
-                    >
-                      <X class="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      v-if="item.status === 'error'"
-                      class="p-1 rounded hover:bg-surface-muted text-text-muted hover:text-primary transition-colors"
-                      :title="t('common.retry')"
-                      @click="retryUpload(item)"
-                    >
-                      <RotateCcw class="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      v-if="item.status === 'pending' || item.status === 'done' || item.status === 'cancelled'"
-                      class="p-1 rounded hover:bg-surface-muted text-text-muted hover:text-text transition-colors"
-                      :title="t('common.remove')"
-                      @click="removeItem(item)"
-                    >
-                      <X class="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
-              </TransitionGroup>
+        <!-- 上传队列 -->
+        <div v-if="uploadItems.length > 0" class="mt-4">
+          <div class="flex items-center justify-between mb-3">
+            <span class="text-caption text-text-secondary">
+              {{ activeCount > 0 ? `${activeCount} ${t('upload.uploading')}` : `${uploadItems.length}
+              ${t('upload.selectFiles')}` }}
+            </span>
+            <div class="flex gap-2">
+              <button type="button"
+                class="inline-flex items-center justify-center rounded-md border border-border bg-surface px-3 py-1.5 text-caption font-medium text-text transition-colors hover:bg-surface-muted disabled:cursor-not-allowed disabled:opacity-50"
+                :disabled="!uploadItems.some(i => i.status === 'done' || i.status === 'cancelled')"
+                @click="clearCompleted">
+                {{ t('common.close') }}
+              </button>
+              <button v-if="pendingCount > 0" type="button"
+                class="inline-flex items-center justify-center rounded-md bg-primary px-3 py-1.5 text-caption font-medium text-white transition-colors hover:bg-primary-hover"
+                @click="startUpload">
+                {{ t('upload.startUpload') }}
+              </button>
             </div>
           </div>
 
-          <!-- 已有页面列表 -->
-          <div class="mt-6">
-            <h3 class="text-body-medium text-text mb-3">{{ t('routes.projects.tabs.pages') }}</h3>
+          <!-- 文件状态列表 -->
+          <div class="space-y-2">
+            <TransitionGroup name="upload-item">
+              <div v-for="item in uploadItems" :key="item.id"
+                class="flex items-center gap-3 p-3 bg-surface rounded-lg border border-border transition-all duration-300"
+                :class="{
+                  'opacity-0 -translate-y-2': item.fadeOut,
+                  'border-danger/40 bg-danger/5': item.status === 'error',
+                }">
+                <!-- 状态图标 -->
+                <Loader2 v-if="item.status === 'uploading'" class="w-4 h-4 text-primary animate-spin shrink-0" />
+                <FileCheck v-else-if="item.status === 'done'" class="w-4 h-4 text-success shrink-0" />
+                <AlertCircle v-else-if="item.status === 'error'" class="w-4 h-4 text-danger shrink-0" />
+                <X v-else-if="item.status === 'cancelled'" class="w-4 h-4 text-text-muted shrink-0" />
+                <FileImage v-else class="w-4 h-4 text-text-muted shrink-0" />
 
-            <div v-if="pagesLoading" class="space-y-2">
-              <div v-for="i in 3" :key="i" class="h-16 bg-surface-alt rounded-lg animate-pulse"></div>
-            </div>
-
-            <NEmpty
-              v-else-if="pages.length === 0"
-              :description="t('upload.selectFiles')"
-              class="py-12"
-            />
-
-            <div v-else class="space-y-2">
-              <div
-                v-for="page in pages"
-                :key="page.page_id"
-                class="flex items-center gap-3 p-3 bg-surface rounded-lg border border-border hover:border-primary/40 cursor-pointer transition-all duration-fast"
-                @click="openWorkspace(page.page_id)"
-              >
-                <FileImage class="w-5 h-5 text-primary shrink-0" />
+                <!-- 文件信息 -->
                 <div class="flex-1 min-w-0">
-                  <p class="text-body text-text truncate">{{ page.filename }}</p>
-                  <p class="text-caption text-text-muted">{{ page.width }}×{{ page.height }} · {{ page.status }}</p>
+                  <div class="flex items-center gap-2">
+                    <p class="text-body text-text truncate">{{ item.file.name }}</p>
+                    <span class="text-micro text-text-muted shrink-0">
+                      {{ (item.file.size / 1024 / 1024).toFixed(1) }}MB
+                    </span>
+                  </div>
+
+                  <!-- 进度条 -->
+                  <div v-if="item.status === 'uploading'"
+                    class="mt-1.5 h-1 bg-surface-muted rounded-full overflow-hidden">
+                    <div class="h-full bg-primary rounded-full transition-all duration-300"
+                      :style="{ width: item.progress + '%' }"></div>
+                  </div>
+
+                  <!-- 结果信息 -->
+                  <p v-if="item.result" class="text-caption text-text-muted mt-1">
+                    {{ item.result.width }}×{{ item.result.height }}
+                  </p>
+
+                  <!-- 错误信息 -->
+                  <p v-if="item.error" class="text-caption text-danger mt-1">{{ item.error }}</p>
                 </div>
-                <NButton size="small" quaternary>
-                  <template #icon><PenTool /></template>
-                  {{ t('annotation.tools.select') }}
-                </NButton>
-                <NButton
-                  size="small"
-                  quaternary
-                  type="error"
-                  :loading="deletingId === page.page_id"
-                  @click="deletePage(page.page_id, $event)"
-                >
-                  <template #icon><X class="w-3.5 h-3.5" /></template>
-                </NButton>
+
+                <!-- 操作按钮 -->
+                <div class="flex items-center gap-1 shrink-0">
+                  <button v-if="item.status === 'uploading'"
+                    class="p-1 rounded hover:bg-surface-muted text-text-muted hover:text-text transition-colors"
+                    :title="t('common.cancel')" @click="cancelUpload(item)">
+                    <X class="w-3.5 h-3.5" />
+                  </button>
+                  <button v-if="item.status === 'error'"
+                    class="p-1 rounded hover:bg-surface-muted text-text-muted hover:text-primary transition-colors"
+                    :title="t('common.retry')" @click="retryUpload(item)">
+                    <RotateCcw class="w-3.5 h-3.5" />
+                  </button>
+                  <button v-if="item.status === 'pending' || item.status === 'done' || item.status === 'cancelled'"
+                    class="p-1 rounded hover:bg-surface-muted text-text-muted hover:text-text transition-colors"
+                    :title="t('common.remove')" @click="removeItem(item)">
+                    <X class="w-3.5 h-3.5" />
+                  </button>
+                </div>
               </div>
+            </TransitionGroup>
+          </div>
+        </div>
+
+        <!-- 已有页面列表 -->
+        <div class="mt-6">
+          <h3 class="text-body-medium text-text mb-3">{{ t('routes.projects.tabs.pages') }}</h3>
+
+          <div v-if="pagesLoading" class="space-y-2">
+            <div v-for="i in 3" :key="i" class="h-16 bg-surface-alt rounded-lg animate-pulse"></div>
+          </div>
+
+          <div v-else-if="pages.length === 0"
+            class="rounded-lg border border-dashed border-border bg-surface px-6 py-12 text-center text-text-muted">
+            {{ t('upload.selectFiles') }}
+          </div>
+
+          <div v-else class="space-y-2">
+            <div v-for="page in pages" :key="page.page_id"
+              class="flex items-center gap-3 p-3 bg-surface rounded-lg border border-border hover:border-primary/40 cursor-pointer transition-all duration-fast"
+              @click="openWorkspace(page.page_id)">
+              <FileImage class="w-5 h-5 text-primary shrink-0" />
+              <div class="flex-1 min-w-0">
+                <p class="text-body text-text truncate">{{ page.filename }}</p>
+                <p class="text-caption text-text-muted">
+                  {{ page.width }}×{{ page.height }} · {{ getPageStatusText(page.status) }}
+                </p>
+              </div>
+              <button type="button"
+                class="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-3 py-1.5 text-caption font-medium text-text transition-colors hover:bg-surface-muted">
+                <PenTool class="w-3.5 h-3.5" />
+                {{ t('common.edit') }}
+              </button>
+              <button type="button"
+                class="inline-flex items-center justify-center rounded-md p-2 text-danger transition-colors hover:bg-danger-bg"
+                :loading="deletingId === page.page_id" @click="deletePage(page.page_id, $event)">
+                <Loader2 v-if="deletingId === page.page_id" class="w-3.5 h-3.5 animate-spin" />
+                <X v-else class="w-3.5 h-3.5" />
+              </button>
             </div>
           </div>
-        </NTabPane>
+        </div>
+      </section>
 
-        <NTabPane name="members" :tab="t('routes.projects.tabs.members')">
-          <NEmpty :description="t('common.noData')" class="py-12" />
-        </NTabPane>
-
-        <NTabPane name="jobs" :tab="t('routes.projects.tabs.jobs')">
-          <NEmpty :description="t('common.noData')" class="py-12" />
-        </NTabPane>
-
-        <NTabPane name="exports" :tab="t('routes.projects.tabs.exports')">
-          <NEmpty :description="t('common.noData')" class="py-12" />
-        </NTabPane>
-
-        <NTabPane name="settings" :tab="t('routes.projects.tabs.settings')">
-          <NEmpty :description="t('common.noData')" class="py-12" />
-        </NTabPane>
-      </NTabs>
+      <section v-else
+        class="rounded-lg border border-dashed border-border bg-surface px-6 py-12 text-center text-text-muted">
+        {{ t('common.noData') }}
+      </section>
     </div>
   </div>
 </template>
@@ -446,10 +416,12 @@ async function deletePage(pageId: string, e: Event) {
 .upload-item-leave-active {
   transition: all 0.3s ease;
 }
+
 .upload-item-enter-from {
   opacity: 0;
   transform: translateY(-10px);
 }
+
 .upload-item-leave-to {
   opacity: 0;
   transform: translateX(20px);

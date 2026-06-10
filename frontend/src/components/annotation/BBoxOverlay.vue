@@ -2,12 +2,23 @@
 /**
  * 单个标注框 SVG overlay
  * 渲染 bbox 矩形 + label badge + read_order + 选中时的 8 个控制点
+ *
+ * props.obj 接收视口坐标系下的对象（viewportBbox 已由 AnnotationCanvas 转换）
  */
 import { computed } from 'vue'
-import type { AnnotationObject } from '@/composables/useAnnotationStore'
+
+interface ViewportObject {
+  id: string
+  type: string
+  label_namespace: string
+  viewportBbox: [number, number, number, number]
+  read_order?: number
+  color: string
+  status: string
+}
 
 interface Props {
-  obj: AnnotationObject
+  obj: ViewportObject
   selected: boolean
   labelName: string
 }
@@ -22,14 +33,14 @@ const emit = defineEmits<{
 
 const HANDLE_SIZE = 8
 
-const x = computed(() => props.obj.bbox_xyxy[0])
-const y = computed(() => props.obj.bbox_xyxy[1])
-const w = computed(() => props.obj.bbox_xyxy[2] - props.obj.bbox_xyxy[0])
-const h = computed(() => props.obj.bbox_xyxy[3] - props.obj.bbox_xyxy[1])
+const x = computed(() => props.obj.viewportBbox[0])
+const y = computed(() => props.obj.viewportBbox[1])
+const w = computed(() => props.obj.viewportBbox[2] - props.obj.viewportBbox[0])
+const h = computed(() => props.obj.viewportBbox[3] - props.obj.viewportBbox[1])
 
 /** 8 个控制点位置：上中、右上、右中、右下、下中、左下、左中、左上 */
 const handles = computed(() => {
-  const [xmin, ymin, xmax, ymax] = props.obj.bbox_xyxy
+  const [xmin, ymin, xmax, ymax] = props.obj.viewportBbox
   const cx = (xmin + xmax) / 2
   const cy = (ymin + ymax) / 2
   return [
@@ -92,7 +103,7 @@ function onHandleMouseDown(idx: number, e: MouseEvent) {
     </g>
 
     <!-- read_order badge -->
-    <g v-if="obj.read_order > 0" :transform="`translate(${x + w - 18}, ${y})`">
+    <g v-if="obj.read_order && obj.read_order > 0" :transform="`translate(${x + w - 18}, ${y})`">
       <rect
         width="18"
         height="18"
