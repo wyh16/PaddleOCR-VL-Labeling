@@ -112,7 +112,7 @@ def delete_page(
         db,
         user_id=current_user.id,
         project_id=int(page["project_id"]),
-        capability="can_manage_project_members",
+        capability="can_import_pages",
     )
     page_row = db.get(Page, int(page["page_id"]))
     if not page_row:

@@ -11,7 +11,13 @@ from app.core.security import (
     get_current_user,
     get_project_capabilities,
 )
-from app.db.models import LabelRegistry, User
+from app.db.models import (
+    LabelRegistry,
+    MemberRoleBinding,
+    ProjectMember,
+    RoleRegistry,
+    User,
+)
 from app.db.models.project import Project
 from app.db.session import get_db_session
 from app.schemas.page import PageListOut
@@ -114,9 +120,13 @@ def list_projects(
     db: Session = Depends(get_db_session),
     current_user: User = Depends(get_current_user),
 ) -> ProjectListOut:
+    visible_project_ids = _get_visible_project_ids(db, user_id=current_user.id)
+    if not visible_project_ids:
+        return ProjectListOut(items=[], total=0)
+
     projects = db.scalars(
         select(Project)
-        .where(Project.created_by == current_user.id)
+        .where(Project.id.in_(visible_project_ids))
         .order_by(Project.created_at.desc())
     ).all()
     return ProjectListOut(
@@ -158,11 +168,12 @@ def get_project(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Project not found"
         )
-    # 只能访问自己创建的项目
-    if project.created_by != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Access denied"
-        )
+    ensure_project_capability(
+        db,
+        user_id=current_user.id,
+        project_id=project_id,
+        capability="can_view_project",
+    )
     return ProjectOut.model_validate(project)
 
 
@@ -343,3 +354,33 @@ _FALLBACK_LABEL_I18N: dict[tuple[str, str], dict[str, str]] = {
     (item.namespace, item.name): item.display_name_i18n
     for item in _FALLBACK_WORKSPACE_LABELS
 }
+
+
+def _get_visible_project_ids(db: Session, *, user_id: int) -> set[int]:
+    visible_project_ids = set(
+        db.scalars(select(Project.id).where(Project.created_by == user_id)).all()
+    )
+
+    stmt = (
+        select(ProjectMember.project_id, RoleRegistry.permissions_json)
+        .join(
+            MemberRoleBinding, MemberRoleBinding.project_member_id == ProjectMember.id
+        )
+        .join(RoleRegistry, RoleRegistry.id == MemberRoleBinding.role_id)
+        .where(
+            ProjectMember.user_id == user_id,
+            ProjectMember.member_status == "active",
+            MemberRoleBinding.status == "active",
+            RoleRegistry.scope == "project",
+            RoleRegistry.is_active.is_(True),
+        )
+    )
+    for project_id, permissions_json in db.execute(stmt).all():
+        capability_items = permissions_json.get("capabilities", [])
+        if (
+            isinstance(project_id, int)
+            and isinstance(capability_items, list)
+            and "can_view_project" in capability_items
+        ):
+            visible_project_ids.add(project_id)
+    return visible_project_ids

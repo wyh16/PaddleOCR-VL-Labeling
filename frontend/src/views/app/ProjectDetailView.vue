@@ -6,7 +6,7 @@
 import { computed, ref, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { pagesApi, type Page } from '@/api/pages'
+import { pagesApi, type Page, type Capabilities } from '@/api/pages'
 import { assetsApi } from '@/api/assets'
 import { formatProjectDetailError } from './projectDetailErrors'
 import { FileCheck, AlertCircle, Loader2, FileImage, PenTool, X, RotateCcw, Upload } from 'lucide-vue-next'
@@ -16,6 +16,8 @@ const route = useRoute()
 const router = useRouter()
 
 const projectId = computed(() => route.params.project_id as string)
+const projectCapabilities = ref<Capabilities | null>(null)
+const canDeletePages = computed(() => Boolean(projectCapabilities.value?.can_import_pages))
 
 // ── 页面列表 ──
 const pages = ref<Page[]>([])
@@ -33,11 +35,20 @@ async function loadPages() {
   }
 }
 
+async function loadProjectCapabilities() {
+  try {
+    projectCapabilities.value = await pagesApi.getCapabilities(projectId.value)
+  } catch {
+    projectCapabilities.value = null
+  }
+}
+
 function openWorkspace(pageId: string) {
   router.push({ name: 'pages.workspace', params: { page_id: pageId } })
 }
 
 onMounted(() => {
+  loadProjectCapabilities()
   loadPages()
 })
 
@@ -393,7 +404,7 @@ async function deletePage(pageId: string, e: Event) {
                 <PenTool class="w-3.5 h-3.5" />
                 {{ t('common.edit') }}
               </button>
-              <button type="button"
+              <button v-if="canDeletePages" type="button"
                 class="inline-flex items-center justify-center rounded-md p-2 text-danger transition-colors hover:bg-danger-bg"
                 :loading="deletingId === page.page_id" @click="deletePage(page.page_id, $event)">
                 <Loader2 v-if="deletingId === page.page_id" class="w-3.5 h-3.5 animate-spin" />
