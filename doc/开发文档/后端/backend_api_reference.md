@@ -17,15 +17,17 @@
 - 6. 图片资产导入
   - 6.1 项目级上传入口
   - 6.2 M3 兼容上传入口
-- 7. 页面与标注 revision
-  - 7.1 获取页面详情
-  - 7.2 获取页面图片签名 URL
-  - 7.3 读取页面图片文件
-  - 7.4 读取页面最新标注版本
-  - 7.5 创建页面标注版本
-- 8. 当前错误响应约定
-- 9. 当前限制与后续收敛点
-- 10. 维护规则
+- 7. 项目配置
+  - 7.1 获取项目标签注册表
+- 8. 页面与标注 revision
+  - 8.1 获取页面详情
+  - 8.2 获取页面图片签名 URL
+  - 8.3 读取页面图片文件
+  - 8.4 读取页面最新标注版本
+  - 8.5 创建页面标注版本
+- 9. 当前错误响应约定
+- 10. 当前限制与后续收敛点
+- 11. 维护规则
 
 ---
 
@@ -366,9 +368,86 @@ Form 字段：
 
 ---
 
-## 7. 页面与标注 revision
+## 7. 项目配置
 
-### 7.1 获取页面详情
+### 7.1 获取项目标签注册表
+
+```http
+GET /api/v1/projects/{project_id}/labels
+```
+
+鉴权：需要登录，并具备 `can_view_project`。
+
+用途：
+
+```text
+1. 标注工作台读取当前项目可用标签，不再在前端写死业务标签集合。
+2. 返回结果会合并项目级标签与全局内置标签；同 namespace/name 冲突时，项目级记录覆盖全局记录。
+3. 如果数据库里暂时没有任何 label_registry 记录，接口会回退返回一组最小 K12 工作台标签，避免工作台不可用。
+```
+
+路径参数：
+
+| 参数 | 类型 | 说明 |
+|---|---|---|
+| `project_id` | integer | 项目数据库内部主键。 |
+
+成功响应：
+
+```json
+{
+  "items": [
+    {
+      "id": 1,
+      "project_id": null,
+      "namespace": "k12",
+      "name": "question_block",
+      "display_name": "Question",
+      "display_name_i18n": {
+        "zh-CN": "题目",
+        "en-US": "Question"
+      },
+      "geometry_types": ["bbox_xyxy", "quad", "polygon"],
+      "attributes_schema": {},
+      "default_color": "#5e6ad2",
+      "is_builtin": true,
+      "is_active": true
+    }
+  ],
+  "total": 1
+}
+```
+
+响应字段：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `items[].id` | integer/null | 标签主键；回退内置标签时可为空。 |
+| `items[].project_id` | integer/null | 所属项目；为空表示全局内置标签。 |
+| `items[].namespace` | string | 标签命名空间，例如 `k12`。 |
+| `items[].name` | string | 标签名，保存到 annotation object 的 `type` / `label_name`。 |
+| `items[].display_name` | string | 默认显示名称。 |
+| `items[].display_name_i18n` | object/null | 多语言显示名称；当前仅内置回退标签提供。 |
+| `items[].geometry_types` | string[] | 允许的几何类型。 |
+| `items[].attributes_schema` | object | 标签属性 schema。 |
+| `items[].default_color` | string/null | 建议显示颜色；前端仍应保留兜底色。 |
+| `items[].is_builtin` | boolean | 是否为内置标签。 |
+| `items[].is_active` | boolean | 是否启用。 |
+| `total` | integer | 返回标签数。 |
+
+错误：
+
+| HTTP 状态码 | 场景 |
+|---|---|
+| `401` | 未登录或认证失效。 |
+| `403` | 当前用户无项目查看权限。 |
+| `404` | 项目不存在。 |
+
+---
+
+## 8. 页面与标注 revision
+
+### 8.1 获取页面详情
 
 ```http
 GET /api/v1/pages/{page_id}
@@ -430,7 +509,7 @@ Authorization: Bearer <access_token>
 | `403` | 缺少 `can_view_project`。 |
 | `404` | 页面不存在。 |
 
-### 7.2 获取页面图片签名 URL
+### 8.2 获取页面图片签名 URL
 
 ```http
 GET /api/v1/pages/{page_id}/image
@@ -477,7 +556,7 @@ Authorization: Bearer <access_token>
 | `403` | 缺少 `can_view_project`。 |
 | `404` | 页面不存在。 |
 
-### 7.3 读取页面图片文件
+### 8.3 读取页面图片文件
 
 ```http
 GET /api/v1/pages/{page_id}/image/raw?exp=1760000000&sig=base64url_hmac
@@ -511,7 +590,7 @@ GET /api/v1/pages/{page_id}/image/raw?exp=1760000000&sig=base64url_hmac
 | `401` | `exp` 已过期、超出允许窗口或 `sig` 校验失败。 |
 | `404` | 页面不存在、页面未绑定图片、资产不存在或磁盘文件缺失。 |
 
-### 7.4 读取页面最新标注版本
+### 8.4 读取页面最新标注版本
 
 ```http
 GET /api/v1/pages/{page_id}/annotation/latest
@@ -573,7 +652,7 @@ Authorization: Bearer <access_token>
 | `404` | 页面不存在。 |
 | `500` | 标注 JSON 资产缺失或读取失败。 |
 
-### 7.5 创建页面标注版本
+### 8.5 创建页面标注版本
 
 ```http
 POST /api/v1/pages/{page_id}/annotation/revisions
@@ -698,7 +777,7 @@ Content-Type: application/json
 
 ---
 
-## 8. 当前错误响应约定
+## 9. 当前错误响应约定
 
 M4 页面与标注 revision 接口捕获的业务错误使用统一结构：
 
@@ -742,7 +821,7 @@ M4 页面与标注 revision 接口当前使用的业务错误 code：
 
 ---
 
-## 9. 当前限制与后续收敛点
+## 10. 当前限制与后续收敛点
 
 ```text
 1. 当前 project_id 仍使用内部数据库主键，后续如果需要公开项目编号，应整体收敛 API 和权限校验。
@@ -757,7 +836,7 @@ M4 页面与标注 revision 接口当前使用的业务错误 code：
 
 ---
 
-## 10. 维护规则
+## 11. 维护规则
 
 ```text
 1. 新增、删除或修改后端 endpoint 时，必须同步更新本文。
