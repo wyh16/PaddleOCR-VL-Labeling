@@ -185,6 +185,11 @@ router.beforeEach(async (to, _from, next) => {
   const meta = to.meta as AppRouteMeta
   const { ensureSession, fetchUser, user } = useAuth()
 
+  if (to.name === 'auth.register' && import.meta.env.VITE_ENABLE_REGISTRATION !== 'true') {
+    next({ name: 'auth.login' })
+    return
+  }
+
   // 确保会话已初始化
   const loggedIn = await ensureSession()
 

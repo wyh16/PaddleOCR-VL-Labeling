@@ -6,7 +6,7 @@
  */
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useAuth } from '@/composables/useAuth'
 import {
   LayoutDashboard,
@@ -22,8 +22,19 @@ import {
 } from 'lucide-vue-next'
 
 const { t } = useI18n()
+const route = useRoute()
 const router = useRouter()
 const { user, logout } = useAuth()
+
+const userDisplayName = computed(() => user.value?.username || t('workspace.unknownUser'))
+const userInitial = computed(() => (user.value?.username?.charAt(0) || t('workspace.unknownUser').charAt(0)).toUpperCase())
+
+const currentProjectText = computed(() => {
+  const raw = route.params.project_id
+  const projectId = Array.isArray(raw) ? raw[0] : raw
+  if (typeof projectId === 'string' && projectId.trim()) return projectId
+  return t('common.noData')
+})
 
 async function handleLogout() {
   await logout()
@@ -34,8 +45,16 @@ interface NavItem {
   key: string
   icon: typeof LayoutDashboard
   routeName?: string
+  routeParams?: Record<string, string>
+  routeQuery?: Record<string, string>
   disabled?: boolean
 }
+
+const currentProjectId = computed(() => {
+  const raw = route.params.project_id
+  const id = Array.isArray(raw) ? raw[0] : raw
+  return typeof id === 'string' && id.trim() ? id : null
+})
 
 const navItems = computed<NavItem[]>(() => [
   { key: 'dashboard', icon: LayoutDashboard, disabled: true },
@@ -43,7 +62,9 @@ const navItems = computed<NavItem[]>(() => [
   { key: 'tasks', icon: ClipboardList, disabled: true },
   { key: 'datasets', icon: Database, disabled: true },
   { key: 'workspace', icon: PenTool, routeName: 'projects.index' },
-  { key: 'qc', icon: ShieldCheck, disabled: true },
+  ...(currentProjectId.value
+    ? [{ key: 'qc', icon: ShieldCheck, routeName: 'projects.detail' as const, routeParams: { project_id: currentProjectId.value }, routeQuery: { tab: 'qc' } }]
+    : [{ key: 'qc', icon: ShieldCheck, disabled: true }]),
   { key: 'exports', icon: Download, disabled: true },
   { key: 'settings', icon: Settings, routeName: 'settings.index' },
 ])
@@ -68,11 +89,15 @@ const navItems = computed<NavItem[]>(() => [
         <template v-for="item in navItems" :key="item.key">
           <router-link
             v-if="item.routeName"
-            :to="{ name: item.routeName }"
+            :to="{
+              name: item.routeName,
+              ...(item.routeParams ? { params: item.routeParams } : {}),
+              ...(item.routeQuery ? { query: item.routeQuery } : {}),
+            }"
             :class="[
               'flex items-center gap-2.5 px-3 py-2 rounded-md text-body transition-colors',
               'text-text-secondary hover:bg-surface-muted hover:text-text',
-              $route.name === item.routeName ? 'bg-primary/8 text-primary font-medium' : '',
+              $route.name === item.routeName && (!item.routeQuery || Object.entries(item.routeQuery).every(([k, v]) => $route.query[k] === v)) ? 'bg-primary/8 text-primary font-medium' : '',
             ]"
           >
             <component :is="item.icon" class="w-4 h-4 shrink-0" />
@@ -96,7 +121,7 @@ const navItems = computed<NavItem[]>(() => [
       <div class="px-3 py-2 border-t border-border">
         <div class="text-micro text-text-muted mb-1">{{ t('project.currentProject') }}</div>
         <button class="flex items-center justify-between w-full px-2 py-1.5 rounded-md text-caption text-text hover:bg-surface-muted transition-colors">
-          <span class="truncate">{{ user?.username ? t('common.loading') : t('common.loading') }}</span>
+          <span class="truncate">{{ currentProjectText }}</span>
           <ChevronDown class="w-3.5 h-3.5 shrink-0 text-text-muted" />
         </button>
       </div>
@@ -105,10 +130,10 @@ const navItems = computed<NavItem[]>(() => [
       <div class="px-3 py-3 border-t border-border">
         <div class="flex items-center gap-2.5">
           <div class="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-caption font-medium text-primary">
-            {{ user?.username?.charAt(0)?.toUpperCase() || 'U' }}
+            {{ userInitial }}
           </div>
           <div class="flex-1 min-w-0">
-            <div class="text-body-medium text-text truncate">{{ user?.username || t('common.noData') }}</div>
+            <div class="text-body-medium text-text truncate">{{ userDisplayName }}</div>
             <div class="flex items-center gap-1 text-micro text-success">
               <span class="w-1.5 h-1.5 rounded-full bg-success"></span>
               {{ t('workspace.online') }}
@@ -122,7 +147,6 @@ const navItems = computed<NavItem[]>(() => [
             <LogOut class="w-4 h-4" />
           </button>
         </div>
-        <div class="text-micro text-text-muted mt-1.5 pl-10.5">{{ t('workspace.roleAnnotator') }}</div>
       </div>
     </aside>
 

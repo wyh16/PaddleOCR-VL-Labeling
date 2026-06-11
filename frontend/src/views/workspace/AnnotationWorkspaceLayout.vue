@@ -11,7 +11,7 @@
  * 不负责：
  * 1. 不在路由层实现 bbox 绘制、坐标换算、自动保存 debounce 或冲突合并算法
  */
-import { ref, provide, onMounted, onUnmounted } from 'vue'
+import { ref, provide, onMounted, onUnmounted, computed } from 'vue'
 import { useRoute, useRouter, type RouteLocationNormalized } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAuth } from '@/composables/useAuth'
@@ -31,6 +31,17 @@ const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
 const { user } = useAuth()
+
+const userDisplayName = computed(() => user.value?.username || t('workspace.unknownUser'))
+const userInitial = computed(() => (user.value?.username?.charAt(0) || t('workspace.unknownUser').charAt(0)).toUpperCase())
+const roleText = computed(() => t('workspace.roleUnknown'))
+const timeZone = computed(() => {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || '--'
+  } catch {
+    return '--'
+  }
+})
 
 // ── 面包屑数据 ──
 const projectName = ref('')
@@ -57,6 +68,15 @@ async function loadBreadcrumb() {
 const saveStatus = ref<SaveStatus>('saved')
 
 function updateSaveStatus(status: SaveStatus) { saveStatus.value = status }
+
+const footerSaveDotClass = computed(() => {
+  if (saveStatus.value === 'saved') return 'bg-success'
+  if (saveStatus.value === 'dirty' || saveStatus.value === 'autosave_pending') return 'bg-warning'
+  if (saveStatus.value === 'autosaving' || saveStatus.value === 'manual_saving') return 'bg-primary animate-pulse'
+  if (saveStatus.value === 'autosave_failed' || saveStatus.value === 'conflict') return 'bg-danger'
+  return 'bg-text-muted'
+})
+const footerSaveText = computed(() => t(`annotation.saveStatus.${saveStatus.value}`))
 
 provide(SAVE_STATUS_KEY, saveStatus)
 provide(UPDATE_SAVE_STATUS_KEY, updateSaveStatus)
@@ -102,11 +122,8 @@ onUnmounted(() => {
           {{ t('nav.projects') }}
         </router-link>
         <span class="text-text-muted">/</span>
-        <router-link
-          v-if="projectId"
-          :to="{ name: 'projects.detail', params: { project_id: projectId } }"
-          class="text-text hover:text-primary truncate max-w-48 transition-colors"
-        >
+        <router-link v-if="projectId" :to="{ name: 'projects.detail', params: { project_id: projectId } }"
+          class="text-text hover:text-primary truncate max-w-48 transition-colors">
           {{ projectName || t('common.loading') }}
         </router-link>
         <span v-else class="text-text truncate max-w-48">{{ projectName || t('common.loading') }}</span>
@@ -121,43 +138,48 @@ onUnmounted(() => {
         <!-- 搜索 -->
         <div class="relative">
           <Search class="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-muted" />
-          <input
-            type="text"
-            :placeholder="t('common.searchPlaceholder')"
-            class="h-7 w-56 pl-7 pr-3 text-caption bg-surface-muted border border-border rounded-md text-text placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-focus focus:border-primary transition-colors"
-          />
+          <input type="text" :placeholder="t('common.searchPlaceholder')"
+            class="h-7 w-56 pl-7 pr-3 text-caption bg-surface-muted border border-border rounded-md text-text placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-focus focus:border-primary transition-colors" />
         </div>
 
         <!-- 快捷键 -->
-        <button class="h-7 px-2 text-caption text-text-secondary hover:bg-surface-muted rounded-md flex items-center gap-1 transition-colors">
+        <button
+          class="h-7 px-2 text-caption text-text-secondary hover:bg-surface-muted rounded-md flex items-center gap-1 transition-colors">
           <Keyboard class="w-3.5 h-3.5" />
           {{ t('project.keyboardShortcuts') }}
         </button>
 
         <!-- 提交任务 -->
-        <button class="h-7 px-3 bg-primary text-white text-caption font-medium rounded-md hover:bg-primary-hover active:bg-primary-active transition-colors flex items-center gap-1">
+        <button
+          class="h-7 px-3 bg-primary text-white text-caption font-medium rounded-md hover:bg-primary-hover active:bg-primary-active transition-colors flex items-center gap-1">
           {{ t('project.submitTask') }}
           <ChevronDown class="w-3 h-3" />
         </button>
 
         <!-- 图标操作 -->
         <div class="flex items-center gap-0.5 ml-1">
-          <button class="w-7 h-7 flex items-center justify-center rounded-md text-text-secondary hover:bg-surface-muted transition-colors relative">
+          <button
+            class="w-7 h-7 flex items-center justify-center rounded-md text-text-secondary hover:bg-surface-muted transition-colors relative">
             <Bell class="w-4 h-4" />
-            <span class="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 bg-danger text-white text-micro rounded-full flex items-center justify-center">!</span>
+            <span
+              class="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 bg-danger text-white text-micro rounded-full flex items-center justify-center">!</span>
           </button>
-          <button class="w-7 h-7 flex items-center justify-center rounded-md text-text-secondary hover:bg-surface-muted transition-colors">
+          <button
+            class="w-7 h-7 flex items-center justify-center rounded-md text-text-secondary hover:bg-surface-muted transition-colors">
             <HelpCircle class="w-4 h-4" />
           </button>
-          <button class="w-7 h-7 flex items-center justify-center rounded-md text-text-secondary hover:bg-surface-muted transition-colors">
+          <button
+            class="w-7 h-7 flex items-center justify-center rounded-md text-text-secondary hover:bg-surface-muted transition-colors">
             <Settings class="w-4 h-4" />
           </button>
         </div>
 
         <!-- 用户头像 -->
         <div class="flex items-center gap-1.5 ml-1 pl-2 border-l border-border">
-          <div class="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center text-caption font-medium text-primary">{{ user?.username?.charAt(0)?.toUpperCase() || 'U' }}</div>
-          <span class="text-caption text-text">{{ user?.username || t('common.noData') }}</span>
+          <div
+            class="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center text-caption font-medium text-primary">
+            {{ userInitial }}</div>
+          <span class="text-caption text-text">{{ userDisplayName }}</span>
           <ChevronDown class="w-3 h-3 text-text-muted" />
         </div>
       </div>
@@ -199,16 +221,14 @@ onUnmounted(() => {
       <div class="max-w-40">
         <div class="text-micro text-text-tertiary mb-1">{{ t('common.save') }}</div>
         <div class="flex items-center gap-1.5">
-          <span
-            :class="[
-              'w-2 h-2 rounded-full shrink-0',
-              saveStatus === 'saved' ? 'bg-success' : '',
-              saveStatus === 'dirty' || saveStatus === 'autosave_pending' ? 'bg-warning' : '',
-              saveStatus === 'autosaving' || saveStatus === 'manual_saving' ? 'bg-primary animate-pulse' : '',
-              saveStatus === 'autosave_failed' || saveStatus === 'conflict' ? 'bg-danger' : '',
-              saveStatus === 'readonly' ? 'bg-text-muted' : '',
-            ]"
-          />
+          <span :class="[
+            'w-2 h-2 rounded-full shrink-0',
+            saveStatus === 'saved' ? 'bg-success' : '',
+            saveStatus === 'dirty' || saveStatus === 'autosave_pending' ? 'bg-warning' : '',
+            saveStatus === 'autosaving' || saveStatus === 'manual_saving' ? 'bg-primary animate-pulse' : '',
+            saveStatus === 'autosave_failed' || saveStatus === 'conflict' ? 'bg-danger' : '',
+            saveStatus === 'readonly' ? 'bg-text-muted' : '',
+          ]" />
           <span class="text-body text-text">
             {{ t(`annotation.saveStatus.${saveStatus}`) }}
           </span>
@@ -233,20 +253,21 @@ onUnmounted(() => {
     </div>
 
     <!-- ═══ 底部状态栏 ═══ -->
-    <footer class="h-8 bg-surface border-t border-border flex items-center px-4 shrink-0 text-micro text-text-tertiary gap-6 z-sticky">
+    <footer
+      class="h-8 bg-surface border-t border-border flex items-center px-4 shrink-0 text-micro text-text-tertiary gap-6 z-sticky">
       <slot name="footer">
         <div class="flex items-center gap-1.5">
-          <span class="w-1.5 h-1.5 rounded-full bg-success"></span>
-          {{ t('workspace.autoSaveOn') }}
+          <span :class="['w-1.5 h-1.5 rounded-full', footerSaveDotClass]"></span>
+          {{ footerSaveText }}
         </div>
         <span>{{ t('workspace.autoSaveInterval') }}</span>
-        <span class="ml-auto">{{ t('workspace.currentUser') }}：{{ user?.username || t('common.noData') }}（{{ t('workspace.roleAnnotator') }}）</span>
+        <span class="ml-auto">{{ t('workspace.currentUser') }}：{{ userDisplayName }}（{{ roleText }}）</span>
         <div class="flex items-center gap-1.5">
           {{ t('workspace.networkStatus') }}：
           <span class="w-1.5 h-1.5 rounded-full bg-success"></span>
           {{ t('workspace.networkGood') }}
         </div>
-        <span>{{ t('workspace.timezone') }}：{{ t('workspace.timezoneValue') }}</span>
+        <span>{{ t('workspace.timezone') }}：{{ timeZone }}</span>
       </slot>
     </footer>
   </div>

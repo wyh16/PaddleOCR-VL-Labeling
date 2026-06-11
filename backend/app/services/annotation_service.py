@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from copy import deepcopy
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -12,6 +13,8 @@ from sqlalchemy.orm import Session
 from app.repositories.annotations import SqlAlchemyAnnotationRepository
 from app.storage.annotation_json import AnnotationJsonStorage, StoredJsonAsset
 from app.utils.ids import new_public_id
+
+logger = logging.getLogger(__name__)
 
 
 class InvalidAnnotationError(ValueError):
@@ -364,11 +367,7 @@ def create_annotation_revision(
             db.commit()
         return revision
     except IntegrityError as exc:
-        import logging
-        import traceback
-        logger = logging.getLogger(__name__)
-        logger.warning(f"[DEBUG] IntegrityError: {exc}")
-        logger.warning(f"[DEBUG] Traceback:\n{traceback.format_exc()}")
+        logger.debug("IntegrityError: %s", exc, exc_info=True)
         if hasattr(db, "rollback"):
             db.rollback()
         if stored_asset is not None and hasattr(json_storage, "remove_revision_json"):
@@ -376,18 +375,8 @@ def create_annotation_revision(
         raise RevisionConflictError(
             "标注版本已被其他请求更新，请重新加载后再保存。"
         ) from exc
-    except Exception as exc:
-        import logging
-        import traceback
-        logger = logging.getLogger(__name__)
-        logger.warning(f"[DEBUG] Unexpected exception: {type(exc).__name__}: {exc}")
-        logger.warning(f"[DEBUG] Traceback:\n{traceback.format_exc()}")
-        if hasattr(db, "rollback"):
-            db.rollback()
-        if stored_asset is not None and hasattr(json_storage, "remove_revision_json"):
-            json_storage.remove_revision_json(stored_asset.storage_path)
-        raise
     except Exception:
+        logger.debug("Unexpected exception", exc_info=True)
         if hasattr(db, "rollback"):
             db.rollback()
         if stored_asset is not None and hasattr(json_storage, "remove_revision_json"):
