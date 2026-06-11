@@ -17,7 +17,17 @@ import BBoxOverlay from './BBoxOverlay.vue'
 interface Props {
   imageUrl: string | null
   activeTool: 'select' | 'bbox' | 'read_order' | 'pan'
-  activeLabel: string
+  activeLabel: {
+    name: string
+    namespace: string
+    color?: string | null
+  } | null
+  qcOverlays?: Array<{
+    issueId: string
+    severity: 'error' | 'warning' | 'info'
+    bbox: [number, number, number, number]
+  }>
+  activeQcIssueId?: string | null
   readonly: boolean
 }
 
@@ -69,9 +79,45 @@ const viewportObjects = computed(() => {
   })
 })
 
+const viewportQcOverlays = computed(() => {
+  return (props.qcOverlays || []).map((overlay) => {
+    const [xmin, ymin, xmax, ymax] = overlay.bbox
+    const topLeft = renderer.imageToViewport(xmin, ymin)
+    const bottomRight = renderer.imageToViewport(xmax, ymax)
+    return {
+      ...overlay,
+      viewportBbox: [topLeft.x, topLeft.y, bottomRight.x, bottomRight.y] as [number, number, number, number],
+    }
+  })
+})
+
+function getQcOverlayStroke(severity: 'error' | 'warning' | 'info'): string {
+  if (severity === 'error') return '#da1e28'
+  if (severity === 'warning') return '#dd5b00'
+  return '#0f62fe'
+}
+
 // ── 视口坐标 → 原图坐标（标注存储用） ──
-function viewportToImage(vpX: number, vpY: number) {
-  return renderer.screenToImage(vpX, vpY) ?? { x: vpX, y: vpY }
+function viewportToImage(vpX: number, vpY: number): { x: number; y: number } | null {
+  return renderer.screenToImage(vpX, vpY)
+}
+
+function clampViewportToImage(vpX: number, vpY: number): { x: number; y: number } | null {
+  const point = renderer.screenToImage(vpX, vpY)
+  if (point) return point
+
+  const scale = renderer.scale.value
+  if (scale === 0) return null
+
+  const maxX = Math.max(renderer.imageSize.value.x, 0)
+  const maxY = Math.max(renderer.imageSize.value.y, 0)
+  const imgX = (vpX - renderer.offset.value.x) / scale
+  const imgY = (vpY - renderer.offset.value.y) / scale
+
+  return {
+    x: Math.min(Math.max(imgX, 0), maxX),
+    y: Math.min(Math.max(imgY, 0), maxY),
+  }
 }
 
 // ── 渲染 ──
@@ -129,11 +175,9 @@ function onMouseDown(e: MouseEvent) {
   const screenY = e.clientY - rect.top
   const imgPt = viewportToImage(screenX, screenY)
 
-  dragStartScreen.value = { x: screenX, y: screenY }
-  dragStartImage.value = imgPt
-
   // Space 临时平移模式
   if (props.activeTool === 'pan' || spaceHeld.value) {
+    dragStartScreen.value = { x: screenX, y: screenY }
     isDragging.value = true
     dragType.value = 'pan'
     return
@@ -141,6 +185,7 @@ function onMouseDown(e: MouseEvent) {
 
   // bbox 工具：画新框
   if (props.activeTool === 'bbox' && !props.readonly) {
+    if (!imgPt) return
     isDragging.value = true
     dragType.value = 'draw'
     drawStartViewport.value = { x: screenX, y: screenY }
@@ -165,7 +210,6 @@ function onMouseMove(e: MouseEvent) {
   const rect = canvas.getBoundingClientRect()
   const screenX = e.clientX - rect.left
   const screenY = e.clientY - rect.top
-  const imgPt = viewportToImage(screenX, screenY)
 
   if (dragType.value === 'pan') {
     const dx = screenX - dragStartScreen.value.x
@@ -190,6 +234,8 @@ function onMouseMove(e: MouseEvent) {
   }
 
   if (dragType.value === 'move' && dragObjectId.value) {
+    const imgPt = clampViewportToImage(screenX, screenY)
+    if (!imgPt) return
     const dx = imgPt.x - dragStartImage.value.x
     const dy = imgPt.y - dragStartImage.value.y
     store.moveObject(dragObjectId.value, dx, dy)
@@ -199,6 +245,8 @@ function onMouseMove(e: MouseEvent) {
   }
 
   if (dragType.value === 'resize' && dragObjectId.value) {
+    const imgPt = clampViewportToImage(screenX, screenY)
+    if (!imgPt) return
     store.resizeObject(dragObjectId.value, dragHandleIndex.value, imgPt.x, imgPt.y)
     emit('objects-changed')
     return
@@ -211,11 +259,17 @@ function onMouseUp() {
     const { x, y, w, h } = tempRect.value
     // 最小面积检查（视口坐标像素）
     if (w > 3 && h > 3) {
-      // 将画框的两个对角点从视口坐标转回原图坐标后存储
-      const topLeft = viewportToImage(x, y)
-      const bottomRight = viewportToImage(x + w, y + h)
-      store.addObject([topLeft.x, topLeft.y, bottomRight.x, bottomRight.y], props.activeLabel)
-      emit('objects-changed')
+      // 图片外释放时按图像边界 clamp，禁止把视口坐标写成原图坐标。
+      const topLeft = clampViewportToImage(x, y)
+      const bottomRight = clampViewportToImage(x + w, y + h)
+      if (topLeft && bottomRight && Math.abs(bottomRight.x - topLeft.x) > 0 && Math.abs(bottomRight.y - topLeft.y) > 0) {
+        if (!props.activeLabel) {
+          tempRect.value = null
+          return
+        }
+        store.addObject([topLeft.x, topLeft.y, bottomRight.x, bottomRight.y], props.activeLabel)
+        emit('objects-changed')
+      }
     }
     tempRect.value = null
   }
@@ -232,9 +286,10 @@ function onBBoxSelect(id: string) {
 
   if (props.activeTool === 'read_order') {
     if (props.readonly) return
-    const maxOrder = store.objects.value.reduce((max, o) => Math.max(max, o.read_order ?? 0), 0)
-    store.setReadOrder(id, maxOrder + 1)
-    emit('objects-changed')
+    const nextOrder = store.assignNextReadOrder(id)
+    if (nextOrder !== null) {
+      emit('objects-changed')
+    }
   }
 }
 
@@ -250,6 +305,7 @@ function onBBoxDragStart(id: string, e: MouseEvent) {
   const screenX = e.clientX - rect.left
   const screenY = e.clientY - rect.top
   const imgPt = viewportToImage(screenX, screenY)
+  if (!imgPt) return
 
   store.savePreDragSnapshot()
   isDragging.value = true
@@ -260,6 +316,7 @@ function onBBoxDragStart(id: string, e: MouseEvent) {
 
 function onBBoxHandleDragStart(id: string, handleIndex: number, e: MouseEvent) {
   if (props.readonly) return
+  if (props.activeTool !== 'select') return
   e.stopPropagation()
   store.savePreDragSnapshot()
   isDragging.value = true
@@ -275,6 +332,7 @@ function onKeyDown(e: KeyboardEvent) {
   // 忽略输入框内的按键（§15.3）
   const tag = (e.target as HTMLElement)?.tagName
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+  if (e.defaultPrevented) return
 
   // Space: 临时平移
   if (e.key === ' ') {
@@ -283,7 +341,8 @@ function onKeyDown(e: KeyboardEvent) {
   }
 
   // Delete/Backspace: 删除选中对象（§15.1）
-  if (!props.readonly && (e.key === 'Delete' || e.key === 'Backspace')) {
+  if (!props.readonly && (e.key === 'Delete' || e.key === 'Backspace' || e.key === 'Del' || e.code === 'Delete')) {
+    e.preventDefault()
     if (store.selectedId.value) {
       store.deleteSelected()
       emit('objects-changed')
@@ -356,8 +415,7 @@ const cursorClass = computed(() => {
 <template>
   <div
     :class="['relative w-full h-full overflow-hidden bg-bg-canvas select-none flex items-center justify-center', cursorClass]"
-    @wheel.prevent="onWheel"
-  >
+    @wheel.prevent="onWheel">
     <!-- 加载中 -->
     <div v-if="!imageLoaded" class="absolute inset-0 flex items-center justify-center text-text-muted">
       <div class="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
@@ -366,48 +424,30 @@ const cursorClass = computed(() => {
     <!-- Canvas + SVG 叠加层（固定视口） -->
     <div v-show="imageLoaded" class="relative" style="width: 800px; height: 600px;">
       <!-- 渲染层：Canvas（物理尺寸锁定，矩阵变换绘图） -->
-      <canvas
-        ref="canvasRef"
-        class="block"
-        style="width: 800px; height: 600px;"
-      />
+      <canvas ref="canvasRef" class="block" style="width: 800px; height: 600px;" />
 
       <!-- 交互层：SVG overlay（viewBox 与 Canvas 逻辑尺寸一致） -->
-      <svg
-        class="absolute top-0 left-0"
-        style="width: 800px; height: 600px;"
-        :viewBox="svgViewBox"
-        xmlns="http://www.w3.org/2000/svg"
-        @mousedown.left="onMouseDown"
-        @mousemove="onMouseMove"
-        @mouseup.left="onMouseUp"
-        @mouseleave="onMouseUp"
-      >
+      <svg class="absolute top-0 left-0" style="width: 800px; height: 600px;" :viewBox="svgViewBox"
+        xmlns="http://www.w3.org/2000/svg" @mousedown.left="onMouseDown" @mousemove="onMouseMove"
+        @mouseup.left="onMouseUp" @mouseleave="onMouseUp">
+        <rect v-for="overlay in viewportQcOverlays" :key="`qc-${overlay.issueId}`" :x="overlay.viewportBbox[0]"
+          :y="overlay.viewportBbox[1]" :width="Math.max(overlay.viewportBbox[2] - overlay.viewportBbox[0], 1)"
+          :height="Math.max(overlay.viewportBbox[3] - overlay.viewportBbox[1], 1)" fill="none"
+          :stroke="getQcOverlayStroke(overlay.severity)"
+          :stroke-width="props.activeQcIssueId === overlay.issueId ? 3 : 2"
+          :stroke-dasharray="props.activeQcIssueId === overlay.issueId ? '8 4' : '4 3'" opacity="0.9"
+          pointer-events="none" />
+
         <!-- 已有标注对象（视口坐标） -->
-        <BBoxOverlay
-          v-for="obj in viewportObjects"
-          :key="obj.id"
-          :obj="obj"
-          :selected="store.selectedId.value === obj.id"
-          :label-name="obj.type"
-          @select="onBBoxSelect(obj.id)"
-          @drag-start="(e) => onBBoxDragStart(obj.id, e)"
-          @handle-drag-start="(idx, e) => onBBoxHandleDragStart(obj.id, idx, e)"
-        />
+        <BBoxOverlay v-for="obj in viewportObjects" :key="obj.id" :obj="obj"
+          :selected="store.selectedId.value === obj.id" :label-name="obj.type" :active-tool="props.activeTool"
+          @select="onBBoxSelect(obj.id)" @drag-start="(e) => onBBoxDragStart(obj.id, e)"
+          @handle-drag-start="(idx, e) => onBBoxHandleDragStart(obj.id, idx, e)" />
 
         <!-- 画框临时矩形（视口坐标） -->
-        <rect
-          v-if="tempRect"
-          :x="tempRect.x"
-          :y="tempRect.y"
-          :width="tempRect.w"
-          :height="tempRect.h"
-          fill="rgba(94, 106, 210, 0.1)"
-          stroke="#5e6ad2"
-          stroke-width="2"
-          stroke-dasharray="6 3"
-          pointer-events="none"
-        />
+        <rect v-if="tempRect" :x="tempRect.x" :y="tempRect.y" :width="tempRect.w" :height="tempRect.h"
+          fill="rgba(94, 106, 210, 0.1)" stroke="#5e6ad2" stroke-width="2" stroke-dasharray="6 3"
+          pointer-events="none" />
       </svg>
     </div>
   </div>

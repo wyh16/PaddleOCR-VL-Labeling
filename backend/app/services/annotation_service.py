@@ -364,6 +364,11 @@ def create_annotation_revision(
             db.commit()
         return revision
     except IntegrityError as exc:
+        import logging
+        import traceback
+        logger = logging.getLogger(__name__)
+        logger.warning(f"[DEBUG] IntegrityError: {exc}")
+        logger.warning(f"[DEBUG] Traceback:\n{traceback.format_exc()}")
         if hasattr(db, "rollback"):
             db.rollback()
         if stored_asset is not None and hasattr(json_storage, "remove_revision_json"):
@@ -371,6 +376,17 @@ def create_annotation_revision(
         raise RevisionConflictError(
             "标注版本已被其他请求更新，请重新加载后再保存。"
         ) from exc
+    except Exception as exc:
+        import logging
+        import traceback
+        logger = logging.getLogger(__name__)
+        logger.warning(f"[DEBUG] Unexpected exception: {type(exc).__name__}: {exc}")
+        logger.warning(f"[DEBUG] Traceback:\n{traceback.format_exc()}")
+        if hasattr(db, "rollback"):
+            db.rollback()
+        if stored_asset is not None and hasattr(json_storage, "remove_revision_json"):
+            json_storage.remove_revision_json(stored_asset.storage_path)
+        raise
     except Exception:
         if hasattr(db, "rollback"):
             db.rollback()
@@ -467,11 +483,16 @@ def _ensure_base_revision_matches_latest(
     latest_revision: Any | None,
     base_revision_id: str | None,
 ) -> None:
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.warning(f"[DEBUG] _ensure_base_revision_matches_latest: latest_revision={latest_revision}, base_revision_id={base_revision_id}")
+
     if latest_revision is None:
         if base_revision_id is not None:
             raise RevisionConflictError("页面当前没有 revision，不能基于历史版本保存。")
         return
     latest_public_id = getattr(latest_revision, "public_id", None)
+    logger.warning(f"[DEBUG] latest_public_id={latest_public_id}, base_revision_id={base_revision_id}, match={base_revision_id == latest_public_id}")
     if base_revision_id is None:
         raise RevisionConflictError("保存已有标注页时必须提交 base_revision_id。")
     if base_revision_id != latest_public_id:

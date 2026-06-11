@@ -21,6 +21,7 @@ interface Props {
   obj: ViewportObject
   selected: boolean
   labelName: string
+  activeTool: 'select' | 'bbox' | 'read_order' | 'pan'
 }
 
 const props = defineProps<Props>()
@@ -126,7 +127,7 @@ function onHandleMouseDown(idx: number, e: MouseEvent) {
     </g>
 
     <!-- 选中时的控制点 -->
-    <template v-if="selected">
+    <template v-if="selected && activeTool === 'select'">
       <rect
         v-for="handle in handles"
         :key="handle.idx"

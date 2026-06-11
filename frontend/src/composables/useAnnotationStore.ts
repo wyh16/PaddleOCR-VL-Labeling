@@ -84,6 +84,12 @@ export function getDefaultColor(label: string): string {
   return LABEL_COLORS[label] || '#5e6ad2'
 }
 
+interface AnnotationLabelInput {
+  name: string
+  namespace: string
+  color?: string | null
+}
+
 let nextId = 1
 function generateId(): string {
   return `obj-${Date.now()}-${nextId++}`
@@ -103,11 +109,14 @@ function bboxToPolygon(bbox: [number, number, number, number]): Polygon {
   return [[xmin, ymin], [xmax, ymin], [xmax, ymax], [xmin, ymax]]
 }
 
-/** 确保 bbox_xyxy 的 xmin < xmax, ymin < ymax */
+/** 确保 bbox_xyxy 的 xmin < xmax, ymin < ymax（严格小于，对齐后端校验） */
 function normalizeBbox(bbox: [number, number, number, number]): [number, number, number, number] {
   let [xmin, ymin, xmax, ymax] = bbox
   if (xmin > xmax) [xmin, xmax] = [xmax, xmin]
   if (ymin > ymax) [ymin, ymax] = [ymax, ymin]
+  // 后端要求 xmin < xmax 且 ymin < ymax（严格不等），退化时扩大 1px
+  if (xmin >= xmax) xmax = xmin + 1
+  if (ymin >= ymax) ymax = ymin + 1
   return [xmin, ymin, xmax, ymax]
 }
 
@@ -125,12 +134,21 @@ function clampBboxToBounds(
   const maxX = Math.max(bounds.width, 0)
   const maxY = Math.max(bounds.height, 0)
 
-  return [
+  let [xmin, ymin, xmax, ymax] = [
     clamp(normalized[0], 0, maxX),
     clamp(normalized[1], 0, maxY),
     clamp(normalized[2], 0, maxX),
     clamp(normalized[3], 0, maxY),
   ]
+
+  // clamp 后可能退化（如全部 clamp 到同一边界），确保严格不等
+  if (xmin >= xmax) xmax = Math.min(xmin + 1, maxX)
+  if (ymin >= ymax) ymax = Math.min(ymin + 1, maxY)
+  // 极端情况：maxX=0 时 xmin=xmax=0，expand 到 1
+  if (xmin >= xmax) xmax = xmin + 1
+  if (ymin >= ymax) ymax = ymin + 1
+
+  return [xmin, ymin, xmax, ymax]
 }
 
 /** 从 bbox 重建完整 geometry（quad + polygon + geometry_source） */
@@ -152,6 +170,10 @@ export function useAnnotationStore() {
   const baseRevisionId = ref<string | undefined>(undefined)
   const revisionNo = ref(0)
   const imageBounds = ref<{ width: number; height: number } | null>(null)
+  const readOrderSession = ref<{ active: boolean; counter: number }>({
+    active: false,
+    counter: 0,
+  })
 
   // ── 撤销/重做 ──
   const undoStack = ref<string[]>([])  // JSON snapshots
@@ -202,27 +224,28 @@ export function useAnnotationStore() {
     imageBounds.value = { width, height }
   }
 
-  function addObject(bbox: [number, number, number, number], label: string) {
+  function addObject(bbox: [number, number, number, number], label: AnnotationLabelInput) {
     saveSnapshot()
     const normalized = clampBboxToBounds(bbox, imageBounds.value)
-    const maxOrder = objects.value.reduce((max, o) => Math.max(max, o.read_order ?? 0), 0)
     const obj: AnnotationObject = {
       id: generateId(),
-      type: label,
-      label_namespace: 'k12',
+      type: label.name,
+      label_namespace: label.namespace,
       geometry: buildGeometry(normalized),
-      read_order: maxOrder + 1,
       attributes: {},
       source_refs: [],
       status: 'draft',
-      color: getDefaultColor(label),
+      color: label.color || getDefaultColor(label.name),
     }
     objects.value.push(obj)
     selectedId.value = obj.id
     return obj
   }
 
-  function updateObject(id: string, patch: Partial<Pick<AnnotationObject, 'type' | 'read_order' | 'color'>> & { bbox_xyxy?: [number, number, number, number] }) {
+  function updateObject(
+    id: string,
+    patch: Partial<Pick<AnnotationObject, 'type' | 'label_namespace' | 'read_order' | 'color'>> & { bbox_xyxy?: [number, number, number, number] },
+  ) {
     saveSnapshot()
     const obj = objects.value.find(o => o.id === id)
     if (!obj) return
@@ -230,6 +253,7 @@ export function useAnnotationStore() {
       obj.type = patch.type
       obj.color = getDefaultColor(patch.type)
     }
+    if (patch.label_namespace !== undefined) obj.label_namespace = patch.label_namespace
     if (patch.bbox_xyxy !== undefined) {
       obj.geometry = buildGeometry(clampBboxToBounds(patch.bbox_xyxy, imageBounds.value))
     }
@@ -295,6 +319,47 @@ export function useAnnotationStore() {
     if (obj) obj.read_order = order
   }
 
+  function clearReadOrder() {
+    const hasReadOrder = objects.value.some(obj => (obj.read_order ?? 0) > 0)
+    if (hasReadOrder) {
+      saveSnapshot()
+      for (const obj of objects.value) {
+        delete obj.read_order
+      }
+    }
+    readOrderSession.value.counter = 0
+  }
+
+  function startReadOrderSession() {
+    if (readOrderSession.value.active) return
+    clearReadOrder()
+    readOrderSession.value = {
+      active: true,
+      counter: 0,
+    }
+  }
+
+  function assignNextReadOrder(id: string): number | null {
+    if (!readOrderSession.value.active) return null
+    const obj = objects.value.find(o => o.id === id)
+    if (!obj) return null
+    if ((obj.read_order ?? 0) > 0) {
+      return obj.read_order ?? null
+    }
+    saveSnapshot()
+    const nextOrder = readOrderSession.value.counter + 1
+    obj.read_order = nextOrder
+    readOrderSession.value.counter = nextOrder
+    return nextOrder
+  }
+
+  function endReadOrderSession() {
+    readOrderSession.value = {
+      active: false,
+      counter: 0,
+    }
+  }
+
   // ── 从 revision 加载 ──
   function loadFromRevision(revision: AnnotationRevision | null) {
     if (!revision) {
@@ -319,7 +384,7 @@ export function useAnnotationStore() {
         polygon: a.geometry?.polygon,
         geometry_source: (a.geometry?.geometry_source as 'manual' | 'auto_generated') || 'auto_generated',
       },
-      read_order: a.read_order,
+      read_order: (a.read_order != null && a.read_order > 0) ? a.read_order : undefined,
       attributes: a.attributes || {},
       source_refs: a.source_refs || [],
       status: (a.status as 'draft' | 'active' | 'deleted') || 'active',
@@ -329,6 +394,7 @@ export function useAnnotationStore() {
     undoStack.value = []
     redoStack.value = []
     selectedId.value = null
+    endReadOrderSession()
   }
 
   /** 导出为 AnnotationDraft（对齐后端 annotation_json 契约） */
@@ -336,21 +402,27 @@ export function useAnnotationStore() {
     const annotationJson: AnnotationJson = {
       schema_version: 'k12_annotation_v0.1',
       page_id: pageId,
-      k12_annotations: objects.value.map(o => ({
-        id: o.id,
-        type: o.type,
-        label_namespace: o.label_namespace,
-        geometry: {
-          bbox_xyxy: o.geometry.bbox_xyxy,
-          quad: o.geometry.quad,
-          polygon: o.geometry.polygon,
-          geometry_source: o.geometry.geometry_source,
-        },
-        read_order: o.read_order,
-        attributes: o.attributes,
-        source_refs: o.source_refs,
-        status: o.status,
-      })),
+      k12_annotations: objects.value.map(o => {
+        const ann: Record<string, unknown> = {
+          id: o.id,
+          type: o.type,
+          label_namespace: o.label_namespace,
+          geometry: {
+            bbox_xyxy: o.geometry.bbox_xyxy,
+            quad: o.geometry.quad,
+            polygon: o.geometry.polygon,
+            geometry_source: o.geometry.geometry_source,
+          },
+          attributes: o.attributes,
+          source_refs: o.source_refs,
+          status: o.status,
+        }
+        // 后端要求 read_order 为正整数或不传；0/负数/undefined/NaN 一律省略
+        if (o.read_order != null && o.read_order > 0) {
+          ann.read_order = o.read_order
+        }
+        return ann
+      }),
       relations: [],
     }
     return {
@@ -367,6 +439,7 @@ export function useAnnotationStore() {
     baseRevisionId,
     revisionNo,
     imageBounds,
+    readOrderSession,
     canUndo,
     canRedo,
     setImageBounds,
@@ -378,6 +451,10 @@ export function useAnnotationStore() {
     moveObject,
     resizeObject,
     setReadOrder,
+    clearReadOrder,
+    startReadOrderSession,
+    assignNextReadOrder,
+    endReadOrderSession,
     savePreDragSnapshot,
     loadFromRevision,
     toDraft,

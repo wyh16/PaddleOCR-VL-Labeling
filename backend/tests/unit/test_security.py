@@ -104,6 +104,42 @@ def test_cookie_session_allows_access_without_bearer_header(monkeypatch) -> None
     assert response.json() == {"ok": True}
 
 
+def test_bearer_header_allows_access_without_cookie(monkeypatch) -> None:
+    app = FastAPI()
+    seen: dict[str, str] = {}
+
+    def fake_decode_access_token(token: str) -> dict[str, str]:
+        seen["token"] = token
+        return {"sub": "123"}
+
+    monkeypatch.setattr(security, "decode_access_token", fake_decode_access_token)
+
+    class DummyUser:
+        id = 123
+        username = "annotator"
+        display_name = "标注员"
+        status = "active"
+        deleted_at = None
+
+    class DummyDb:
+        def scalar(self, _stmt: object):
+            return DummyUser()
+
+    app.dependency_overrides[security.get_db_session] = lambda: DummyDb()
+
+    @app.get("/me")
+    def read_me(_user=Depends(security.get_current_user)) -> dict[str, bool]:
+        return {"ok": True}
+
+    client = TestClient(app)
+
+    response = client.get("/me", headers={"Authorization": "Bearer bearer-token"})
+
+    assert response.status_code == 200
+    assert response.json() == {"ok": True}
+    assert seen["token"] == "bearer-token"
+
+
 class CapabilitySession:
     def __init__(self, permissions: list[dict[str, list[str]]]) -> None:
         self.permissions = permissions
