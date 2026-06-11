@@ -3,7 +3,7 @@
  * 覆盖成功响应、错误响应、网络错误、204 等场景
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { api, ApiClientError } from '../client'
+import { api, ApiClientError, setToken, getToken, clearToken } from '../client'
 
 // Mock fetch
 const mockFetch = vi.fn()
@@ -12,6 +12,7 @@ vi.stubGlobal('fetch', mockFetch)
 describe('ApiClient', () => {
   beforeEach(() => {
     mockFetch.mockReset()
+    clearToken()
   })
 
   describe('成功响应', () => {
@@ -131,6 +132,34 @@ describe('ApiClient', () => {
         expect(err.message).toBe('errors.server')
       }
     })
+
+    it('后端业务错误包装 { error, request_id } 会被正确解析', async () => {
+      const errorData = {
+        error: {
+          code: 'PAGE_NOT_FOUND',
+          message: 'Page not found',
+          details: { page_id: 'p1' },
+        },
+        request_id: 'req_123',
+      }
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 404,
+        json: () => Promise.resolve(errorData),
+      })
+
+      try {
+        await api.get('/pages/p1')
+        expect.fail('Should have thrown')
+      } catch (e) {
+        const err = e as ApiClientError
+        expect(err.status).toBe(404)
+        expect(err.code).toBe('PAGE_NOT_FOUND')
+        expect(err.requestId).toBe('req_123')
+        expect(err.details).toEqual({ page_id: 'p1' })
+        expect(err.message).toBe('Page not found')
+      }
+    })
   })
 
   describe('网络错误', () => {
@@ -145,6 +174,16 @@ describe('ApiClient', () => {
         expect(err.status).toBe(0)
         expect(err.message).toBe('errors.network')
       }
+    })
+  })
+
+  describe('token 存储', () => {
+    it('token 仅保存在内存中', () => {
+      setToken('token_123')
+      expect(getToken()).toBe('token_123')
+
+      clearToken()
+      expect(getToken()).toBeNull()
     })
   })
 })

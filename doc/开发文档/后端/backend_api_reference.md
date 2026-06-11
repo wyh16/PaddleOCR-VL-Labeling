@@ -19,8 +19,10 @@
   - 6.2 M3 兼容上传入口
 - 7. 页面与标注 revision
   - 7.1 获取页面详情
-  - 7.2 读取页面最新标注版本
-  - 7.3 创建页面标注版本
+  - 7.2 获取页面图片签名 URL
+  - 7.3 读取页面图片文件
+  - 7.4 读取页面最新标注版本
+  - 7.5 创建页面标注版本
 - 8. 当前错误响应约定
 - 9. 当前限制与后续收敛点
 - 10. 维护规则
@@ -117,6 +119,8 @@ Authorization: Bearer <access_token>
 | `POST` | `/api/v1/projects/{project_id}/assets/upload` | 是 | 已实现 | 标准项目级图片上传入口。 |
 | `POST` | `/api/v1/assets/upload` | 是 | 兼容入口 | M3 简化上传入口，project_id 放在 form 中。 |
 | `GET` | `/api/v1/pages/{page_id}` | 是 | 已实现 | 获取页面详情和图片元数据。 |
+| `GET` | `/api/v1/pages/{page_id}/image` | 是 | 已实现 | 获取页面图片短期签名访问 URL。 |
+| `GET` | `/api/v1/pages/{page_id}/image/raw?exp=&sig=` | 否 | 已实现 | 读取页面图片文件；依赖短期签名 URL。 |
 | `GET` | `/api/v1/pages/{page_id}/annotation/latest` | 是 | 已实现 | 读取页面最新标注 revision。 |
 | `POST` | `/api/v1/pages/{page_id}/annotation/revisions` | 是 | 已实现 | 创建新的整页标注 revision。 |
 
@@ -399,7 +403,88 @@ Authorization: Bearer <access_token>
 | `403` | 缺少 `can_view_project`。 |
 | `404` | 页面不存在。 |
 
-### 7.2 读取页面最新标注版本
+### 7.2 获取页面图片签名 URL
+
+```http
+GET /api/v1/pages/{page_id}/image
+Authorization: Bearer <access_token>
+```
+
+鉴权：需要登录，并具备 `can_view_project`。
+
+路径参数：
+
+| 参数 | 类型 | 说明 |
+|---|---|---|
+| `page_id` | string | 页面公开稳定编号，即 `pages.public_id`。 |
+
+成功响应：
+
+```json
+{
+  "url": "/api/v1/pages/page_xxx/image/raw?exp=1760000000&sig=base64url_hmac",
+  "expires_at": "2026-06-09T12:00:00Z"
+}
+```
+
+响应字段：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `url` | string | 页面图片短期签名访问 URL。当前使用 `page_id + exp` 的 HMAC-SHA256 签名。 |
+| `expires_at` | string | 签名 URL 的 UTC 过期时间。当前默认签发后 5 分钟过期。 |
+
+行为约束：
+
+```text
+1. 只有通过 /image 接口且具备 can_view_project 的用户才能获得签名 URL。
+2. raw URL 自带 exp 和 sig；服务端会校验签名是否匹配、是否过期。
+3. 当前签名 URL 不绑定用户会话，拿到 URL 的客户端可在过期前重复访问。
+```
+
+错误：
+
+| HTTP 状态码 | 场景 |
+|---|---|
+| `401` | token 缺失、无效或已过期。 |
+| `403` | 缺少 `can_view_project`。 |
+| `404` | 页面不存在。 |
+
+### 7.3 读取页面图片文件
+
+```http
+GET /api/v1/pages/{page_id}/image/raw?exp=1760000000&sig=base64url_hmac
+```
+
+鉴权：不要求 Bearer token；依赖 `/image` 下发的短期签名 URL。
+
+路径参数：
+
+| 参数 | 类型 | 说明 |
+|---|---|---|
+| `page_id` | string | 页面公开稳定编号，即 `pages.public_id`。 |
+
+查询参数：
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `exp` | integer | 是 | UTC 秒级过期时间戳。 |
+| `sig` | string | 是 | 基于 `page_id + exp` 计算的 HMAC-SHA256 签名。 |
+
+成功响应：
+
+```text
+返回页面图片文件流，Content-Type 使用资产的 mime_type。
+```
+
+错误：
+
+| HTTP 状态码 | 场景 |
+|---|---|
+| `401` | `exp` 已过期、超出允许窗口或 `sig` 校验失败。 |
+| `404` | 页面不存在、页面未绑定图片、资产不存在或磁盘文件缺失。 |
+
+### 7.4 读取页面最新标注版本
 
 ```http
 GET /api/v1/pages/{page_id}/annotation/latest
@@ -460,7 +545,7 @@ Authorization: Bearer <access_token>
 | `404` | 页面不存在，或页面还没有标注 revision。 |
 | `500` | 标注 JSON 资产缺失或读取失败。 |
 
-### 7.3 创建页面标注版本
+### 7.5 创建页面标注版本
 
 ```http
 POST /api/v1/pages/{page_id}/annotation/revisions
@@ -637,7 +722,7 @@ M4 页面与标注 revision 接口当前使用的业务错误 code：
 3. 当前没有对象级 patch API；标注保存以整页 annotation JSON revision 为单位。
 4. 当前标注 JSON 已要求 k12_annotations 字段存在；relations 仍允许缺失并按空数组处理。
 5. 当前没有 revision submit、lock、rollback、review、qc run 等流转接口。
-6. 当前没有页面列表、项目列表、图片直接读取或 signed URL 接口。
+6. 当前页面图片访问已提供短期签名 URL；签名默认 5 分钟有效，raw 端点要求 exp 和 sig 校验通过。
 7. 当前认证、权限和 Pydantic 请求校验错误尚未统一包装 request_id；M4 页面与标注 revision 的业务错误已统一。
 8. 当前接口文档不替代自动生成的 OpenAPI；字段变化时两者都需要核对。
 ```

@@ -28,36 +28,19 @@ export class ApiClientError extends Error {
 }
 
 const BASE_URL = '/api/v1'
-
-const TOKEN_STORAGE_KEY = 'k12.access_token'
-
-function getTokenStorage(): Storage | null {
-  try {
-    if (typeof window === 'undefined') return null
-    return window.sessionStorage
-  } catch {
-    return null
-  }
-}
-
-// ── Bearer token：内存优先，刷新后从 sessionStorage 恢复 ──
+// ── Bearer token：仅保存在内存中 ──
 let accessToken: string | null = null
 
 export function setToken(token: string) {
   accessToken = token
-  getTokenStorage()?.setItem(TOKEN_STORAGE_KEY, token)
 }
 
 export function getToken(): string | null {
-  if (accessToken) return accessToken
-  const stored = getTokenStorage()?.getItem(TOKEN_STORAGE_KEY) || null
-  accessToken = stored
-  return stored
+  return accessToken
 }
 
 export function clearToken() {
   accessToken = null
-  getTokenStorage()?.removeItem(TOKEN_STORAGE_KEY)
 }
 
 /**
@@ -74,6 +57,57 @@ const STATUS_I18N_KEYS: Record<number, string> = {
   500: 'errors.server',
 }
 
+function getFallbackMessage(status: number): string {
+  return STATUS_I18N_KEYS[status] || 'errors.unknown'
+}
+
+export function getAuthorizationHeader(): string | null {
+  const token = getToken()
+  return token ? `Bearer ${token}` : null
+}
+
+export function withAuthorizationHeader(headers: Record<string, string> = {}): Record<string, string> {
+  const authHeader = getAuthorizationHeader()
+  if (!authHeader) return headers
+  return {
+    ...headers,
+    Authorization: authHeader,
+  }
+}
+
+export function parseApiErrorBody(body: any, status: number): ApiError {
+  const bizError = body?.error
+  return {
+    message: bizError?.message || body?.detail || body?.message || getFallbackMessage(status),
+    status,
+    code: bizError?.code || body?.code,
+    request_id: body?.request_id || body?.requestId,
+    details: bizError?.details || body?.details,
+  }
+}
+
+export async function parseApiErrorResponse(response: Pick<Response, 'status' | 'json'>): Promise<ApiError> {
+  try {
+    const body = await response.json()
+    return parseApiErrorBody(body, response.status)
+  } catch {
+    return {
+      message: getFallbackMessage(response.status),
+      status: response.status,
+    }
+  }
+}
+
+export async function fetchWithAuth(input: string, init: RequestInit = {}): Promise<Response> {
+  const headers = withAuthorizationHeader({
+    ...(init.headers as Record<string, string> | undefined),
+  })
+  return fetch(input, {
+    ...init,
+    headers,
+  })
+}
+
 async function request<T>(
   endpoint: string,
   options: RequestInit = {}
@@ -81,43 +115,21 @@ async function request<T>(
   const url = `${BASE_URL}${endpoint}`
 
   const isFormData = options.body instanceof FormData
-  const headers: Record<string, string> = {
+  const baseHeaders: Record<string, string> = {
     ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
     ...(options.headers as Record<string, string>),
   }
 
-  const token = getToken()
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`
-  }
-
   const config: RequestInit = {
     ...options,
-    headers,
+    headers: withAuthorizationHeader(baseHeaders),
   }
 
   try {
     const response = await fetch(url, config)
 
     if (!response.ok) {
-      let errorData: ApiError
-      try {
-        const body = await response.json()
-        // FastAPI 返回 {"detail": "..."} 格式，需要适配
-        errorData = {
-          message: body.detail || body.message || STATUS_I18N_KEYS[response.status] || 'errors.unknown',
-          status: response.status,
-          code: body.code,
-          request_id: body.request_id || body.requestId,
-          details: body.details,
-        }
-      } catch {
-        errorData = {
-          message: STATUS_I18N_KEYS[response.status] || 'errors.unknown',
-          status: response.status,
-        }
-      }
-      throw new ApiClientError(errorData)
+      throw new ApiClientError(await parseApiErrorResponse(response))
     }
 
     // 204 No Content

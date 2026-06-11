@@ -44,6 +44,12 @@ def test_m4_page_and_annotation_revision_routes_are_registered() -> None:
     assert "GET" in routes["/api/v1/pages/{page_id}"]
     assert "DELETE" in routes["/api/v1/pages/{page_id}"]
 
+    assert "/api/v1/pages/{page_id}/image" in routes
+    assert "GET" in routes["/api/v1/pages/{page_id}/image"]
+
+    assert "/api/v1/pages/{page_id}/image/raw" in routes
+    assert "GET" in routes["/api/v1/pages/{page_id}/image/raw"]
+
     assert "/api/v1/pages/{page_id}/annotation/latest" in routes
     assert "GET" in routes["/api/v1/pages/{page_id}/annotation/latest"]
 
@@ -58,6 +64,8 @@ def test_m4_routes_use_public_page_id_name() -> None:
     routes = route_methods_by_path()
     m4_paths = {
         "/api/v1/pages/{page_id}",
+        "/api/v1/pages/{page_id}/image",
+        "/api/v1/pages/{page_id}/image/raw",
         "/api/v1/pages/{page_id}/annotation/latest",
         "/api/v1/pages/{page_id}/annotation/revisions",
         "/api/v1/pages/{page_id}/annotation/revisions/{revision_id}",

@@ -17,6 +17,7 @@ import { ApiClientError } from '@/api/client'
 import AnnotationCanvas from '@/components/annotation/AnnotationCanvas.vue'
 import type { AnnotationObject } from '@/composables/useAnnotationStore'
 import { SAVE_STATUS_KEY, UPDATE_SAVE_STATUS_KEY, computeCanWriteAnnotation, type SaveStatus } from './workspaceGuards'
+import { revokeObjectUrl, syncThumbnailObjectUrls } from './workspaceImageUrls'
 import {
   MousePointer2,
   SquareDashedMousePointer,
@@ -285,12 +286,16 @@ function goToNextPage() {
 async function loadPageList(projectId: string) {
   try {
     const res = await pagesApi.list(projectId)
+    thumbnailUrls.value = syncThumbnailObjectUrls({
+      current: thumbnailUrls.value,
+      nextPageIds: res.items.map(item => item.page_id),
+    })
     pageList.value = res.items
 
     for (const p of res.items) {
       if (!thumbnailUrls.value[p.page_id]) {
         try {
-          const { url } = await pagesApi.getImageUrl(p.page_id)
+          const url = await pagesApi.fetchImageBlob(p.page_id)
           thumbnailUrls.value[p.page_id] = url
         } catch { /* 缩略图加载失败不影响功能 */ }
       }
@@ -300,7 +305,7 @@ async function loadPageList(projectId: string) {
 
 async function loadImageUrl(targetPageId: string): Promise<string | null> {
   try {
-    const { url } = await pagesApi.getImageUrl(targetPageId)
+    const url = await pagesApi.fetchImageBlob(targetPageId)
     return url
   } catch {
     return null
@@ -384,7 +389,11 @@ async function loadWorkspace() {
     // 加载同项目页面列表（不阻塞主流程）
     loadPageList(String(page.value.project_id))
 
-    imageUrl.value = await loadImageUrl(page.value.page_id)
+    const nextImageUrl = await loadImageUrl(page.value.page_id)
+    if (nextImageUrl !== imageUrl.value) {
+      revokeObjectUrl(imageUrl.value)
+      imageUrl.value = nextImageUrl
+    }
 
     // 加载标注
     try {
@@ -421,6 +430,12 @@ async function loadWorkspace() {
 watch([pageId, revisionId], () => { loadWorkspace() })
 watch(isReadonly, () => { syncWorkspaceMeta() })
 onMounted(() => { loadWorkspace() })
+onUnmounted(() => {
+  revokeObjectUrl(imageUrl.value)
+  for (const url of Object.values(thumbnailUrls.value)) {
+    revokeObjectUrl(url)
+  }
+})
 </script>
 
 <template>

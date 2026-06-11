@@ -2,7 +2,7 @@
  * 文件资产相关 API
  * 后端：POST /projects/{project_id}/assets/upload
  */
-import { api } from './client'
+import { api, ApiClientError, getAuthorizationHeader, parseApiErrorBody } from './client'
 
 export interface Asset {
   id: string
@@ -49,5 +49,58 @@ export const assetsApi = {
       `/projects/${projectId}/assets/upload`,
       formData,
     )
+  },
+
+  /** 上传资产（带进度回调），返回 promise 与 abort */
+  uploadWithProgress: (
+    projectId: string,
+    file: File,
+    onProgress: (percent: number) => void,
+  ): { promise: Promise<AssetUploadResponse>; abort: () => void } => {
+    const xhr = new XMLHttpRequest()
+    const promise = new Promise<AssetUploadResponse>((resolve, reject) => {
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) {
+          onProgress(Math.round((e.loaded / e.total) * 100))
+        }
+      }
+
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            resolve(JSON.parse(xhr.responseText) as AssetUploadResponse)
+          } catch {
+            reject(new ApiClientError({ message: 'errors.unknown', status: xhr.status }))
+          }
+          return
+        }
+
+        try {
+          const body = JSON.parse(xhr.responseText)
+          reject(new ApiClientError(parseApiErrorBody(body, xhr.status)))
+        } catch {
+          reject(new ApiClientError({ message: 'errors.unknown', status: xhr.status }))
+        }
+      }
+
+      xhr.onerror = () => {
+        reject(new ApiClientError({ message: 'errors.network', status: 0 }))
+      }
+
+      const formData = new FormData()
+      formData.append('file', file)
+
+      xhr.open('POST', `/api/v1/projects/${projectId}/assets/upload`)
+      const authHeader = getAuthorizationHeader()
+      if (authHeader) {
+        xhr.setRequestHeader('Authorization', authHeader)
+      }
+      xhr.send(formData)
+    })
+
+    return {
+      promise,
+      abort: () => xhr.abort(),
+    }
   },
 }

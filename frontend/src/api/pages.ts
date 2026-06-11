@@ -3,7 +3,7 @@
  *
  * 后端接口契约参见：doc/开发文档/后端/backend_api_reference.md §7
  */
-import { api } from './client'
+import { api, ApiClientError, fetchWithAuth, parseApiErrorResponse } from './client'
 
 // ── 后端响应原始类型 ──
 
@@ -109,6 +109,18 @@ export const pagesApi = {
   /** 获取页面图片访问 URL */
   getImageUrl: (pageId: string) =>
     api.get<{ url: string; expires_at: string }>(`/pages/${pageId}/image`),
+
+  /** 获取页面图片二进制并转换为 object URL（调用方负责 revoke） */
+  fetchImageBlob: async (pageId: string): Promise<string> => {
+    const { url } = await pagesApi.getImageUrl(pageId)
+    const response = await fetchWithAuth(url)
+    if (!response.ok) {
+      throw new ApiClientError(await parseApiErrorResponse(response))
+    }
+
+    const blob = await response.blob()
+    return URL.createObjectURL(blob)
+  },
 
   /** 获取用户在项目中的 capabilities */
   getCapabilities: (projectId: string) =>

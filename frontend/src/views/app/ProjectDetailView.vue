@@ -6,8 +6,9 @@
 import { computed, ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { getToken } from '@/api/client'
+import { ApiClientError } from '@/api/client'
 import { pagesApi, type Page } from '@/api/pages'
+import { assetsApi } from '@/api/assets'
 import { FileCheck, AlertCircle, Loader2, FileImage, PenTool, X, RotateCcw, Upload } from 'lucide-vue-next'
 
 const { t } = useI18n()
@@ -90,7 +91,7 @@ interface UploadItem {
   progress: number
   error?: string
   result?: { asset_id: string; document_id: string; page_id: string; width: number; height: number }
-  xhr?: XMLHttpRequest
+  abort?: () => void
   fadeOut: boolean
 }
 
@@ -129,58 +130,42 @@ function uploadSingle(item: UploadItem) {
   item.status = 'uploading'
   item.progress = 0
 
-  const xhr = new XMLHttpRequest()
-  item.xhr = xhr
+  const { promise, abort } = assetsApi.uploadWithProgress(
+    projectId.value,
+    item.file,
+    (percent) => { item.progress = percent },
+  )
+  item.abort = abort
 
-  xhr.upload.onprogress = (e) => {
-    if (e.lengthComputable) {
-      item.progress = Math.round((e.loaded / e.total) * 100)
-    }
-  }
-
-  xhr.onload = () => {
-    if (xhr.status >= 200 && xhr.status < 300) {
-      try {
-        const res = JSON.parse(xhr.responseText)
-        item.status = 'done'
-        item.progress = 100
-        item.result = res.data
-        // 淡出后移除
-        setTimeout(() => {
-          item.fadeOut = true
-          setTimeout(() => {
-            uploadItems.value = uploadItems.value.filter(i => i.id !== item.id)
-          }, 300)
-        }, 800)
-        // 刷新页面列表
-        loadPages()
-      } catch {
-        item.status = 'error'
-        item.error = t('common.error')
-      }
-    } else {
-      item.status = 'error'
-      item.error = t('upload.failed')
-    }
-  }
-
-  xhr.onerror = () => {
+  promise.then((res) => {
+    item.status = 'done'
+    item.progress = 100
+    item.result = res.data
+    setTimeout(() => {
+      item.fadeOut = true
+      setTimeout(() => {
+        uploadItems.value = uploadItems.value.filter(i => i.id !== item.id)
+      }, 300)
+    }, 800)
+    loadPages()
+  }).catch((e) => {
     item.status = 'error'
+    if (e instanceof ApiClientError) {
+      if (e.status === 0) item.error = t('errors.network')
+      else if (e.status === 403) item.error = t('errors.forbidden')
+      else if (e.status === 401) item.error = t('errors.unauthorized')
+      else item.error = t('upload.failed')
+      return
+    }
     item.error = t('upload.failed')
-  }
-
-  const formData = new FormData()
-  formData.append('file', item.file)
-  xhr.open('POST', `/api/v1/projects/${projectId.value}/assets/upload`)
-  xhr.setRequestHeader('Authorization', `Bearer ${getToken()}`)
-  xhr.send(formData)
+  }).finally(() => {
+    item.abort = undefined
+  })
 }
 
 function cancelUpload(item: UploadItem) {
-  if (item.xhr) {
-    item.xhr.abort()
-    item.xhr = undefined
-  }
+  item.abort?.()
+  item.abort = undefined
   item.status = 'cancelled'
   item.fadeOut = true
   setTimeout(() => {
@@ -196,8 +181,9 @@ function retryUpload(item: UploadItem) {
 }
 
 function removeItem(item: UploadItem) {
-  if (item.status === 'uploading' && item.xhr) {
-    item.xhr.abort()
+  if (item.status === 'uploading') {
+    item.abort?.()
+    item.abort = undefined
   }
   item.fadeOut = true
   setTimeout(() => {
