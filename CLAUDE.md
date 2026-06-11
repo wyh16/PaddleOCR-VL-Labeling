@@ -2,6 +2,27 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## 目录
+
+- 1. 定位与优先级
+- 2. 项目背景
+- 3. 技术架构
+- 4. 常用命令
+- 5. Git 提交规范
+- 6. 前端开发约定
+- 7. 后端开发约定
+- 8. 文档导航
+
+## 1. 定位与优先级
+
+```text
+1. 本文件是 Claude Code 的快捷入口，帮助快速定位项目背景、常用命令和文档入口。
+2. 仓库级 agent 总入口仍是 AGENTS.md。
+3. 具体任务应继续按 AGENTS.md 指向的二级 INDEX.md 和详细规范文档展开。
+4. 如果本文件与详细规范冲突，以对应 INDEX.md 和详细规范文档为准。
+5. 本文件不复制详细规则，详细约定只保留文档入口链接。
+```
+
 ## 项目背景
 
 通用文档数据采集与标注平台。第一个场景是 K12 试卷识别与结构化解析，兼容 PaddleOCR-VL / PP-DocLayoutV3 官方输入输出，同时维护可扩展标注、质检、版本和导出能力。
@@ -78,6 +99,7 @@ fix(backend): 补齐项目角色绑定审计日志
 - ORM 模型在 `app/db/models/`，使用 `DeclarativeBase` + shared mixins
 - 配置通过 `app/core/config.py` 的 Pydantic Settings 从 `.env` 加载
 - Migration 必须用 `annotation_migrator` 账号执行，不用应用运行账号
+- 默认不在应用启动时自动执行 Alembic；如开发环境需启用，设置 `AUTO_MIGRATE_ON_STARTUP=true`，迁移失败会中止启动
 - K12 场景特有逻辑放 `app/scenarios/k12/`，核心保持通用
 - 详细规范见 `doc/开发文档/后端/backend_development_spec.md`
 

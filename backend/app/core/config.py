@@ -38,6 +38,10 @@ class Settings(BaseSettings):
         validation_alias="STORAGE_ROOT",
     )
     max_upload_mb: int = Field(default=200, validation_alias="MAX_UPLOAD_MB")
+    auto_migrate_on_startup: bool = Field(
+        default=False,
+        validation_alias="AUTO_MIGRATE_ON_STARTUP",
+    )
 
     jwt_secret_key: str | None = Field(default=None, validation_alias="JWT_SECRET_KEY")
     jwt_expire_minutes: int = Field(

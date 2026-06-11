@@ -17,14 +17,25 @@
 - 6. 图片资产导入
   - 6.1 项目级上传入口
   - 6.2 M3 兼容上传入口
-- 7. 项目配置
-  - 7.1 获取项目标签注册表
+- 7. 项目与标签
+  - 7.1 获取项目列表
+  - 7.2 创建项目
+  - 7.3 获取项目详情
+  - 7.4 更新项目
+  - 7.5 删除项目
+  - 7.6 获取项目页面列表
+  - 7.7 获取当前用户项目能力
+  - 7.8 获取项目标签注册表
 - 8. 页面与标注 revision
   - 8.1 获取页面详情
-  - 8.2 获取页面图片签名 URL
-  - 8.3 读取页面图片文件
-  - 8.4 读取页面最新标注版本
-  - 8.5 创建页面标注版本
+  - 8.2 删除页面
+  - 8.3 获取页面图片签名 URL
+  - 8.4 读取页面图片文件
+  - 8.5 读取页面最新标注版本
+  - 8.6 创建页面标注版本
+  - 8.7 列出页面标注版本
+  - 8.8 读取页面指定标注版本
+  - 8.9 获取页面 QC 问题列表
 - 9. 当前错误响应约定
 - 10. 当前限制与后续收敛点
 - 11. 维护规则
@@ -35,6 +46,7 @@
 
 | 版本 | 日期 | 说明 |
 |---|---|---|
+| v0.2 | 2026-06-11 | 补齐 projects、project pages、project capabilities、page delete、revision list/detail 和 page QC 已实现接口。 |
 | v0.1 | 2026-06-09 | 初版接口文档，补充 auth、health、assets、pages 和 annotation revision 已实现接口。 |
 
 ---
@@ -105,9 +117,11 @@ Authorization: Bearer <access_token>
 
 | 能力 | 使用接口 |
 |---|---|
+| 创建者本人 | 项目列表、项目详情、项目更新、项目删除 |
 | `can_upload_assets` | 上传图片资产 |
-| `can_view_project` | 读取页面详情、读取最新标注版本 |
+| `can_view_project` | 读取项目页面列表、项目标签、页面详情、页面图片 URL、读取最新标注版本、列出页面标注版本、读取指定标注版本、读取页面 QC |
 | `can_create_annotation_revision` | 创建页面标注版本 |
+| `can_manage_project_members` | 删除页面 |
 
 ---
 
@@ -118,13 +132,25 @@ Authorization: Bearer <access_token>
 | `POST` | `/api/v1/auth/login` | 否 | 已实现 | 用户登录，返回 Bearer JWT。 |
 | `GET` | `/api/v1/auth/me` | 是 | 已实现 | 获取当前登录用户。 |
 | `GET` | `/api/v1/health` | 否 | 已实现 | 数据库和 Redis 健康检查。 |
+| `GET` | `/api/v1/projects` | 是 | 已实现 | 获取当前用户创建的项目列表。 |
+| `POST` | `/api/v1/projects` | 是 | 已实现 | 创建项目。 |
+| `GET` | `/api/v1/projects/{project_id}` | 是 | 已实现 | 获取项目详情；仅创建者可访问。 |
+| `PATCH` | `/api/v1/projects/{project_id}` | 是 | 已实现 | 更新项目；仅创建者可操作。 |
+| `DELETE` | `/api/v1/projects/{project_id}` | 是 | 已实现 | 删除项目；仅创建者可操作。 |
 | `POST` | `/api/v1/projects/{project_id}/assets/upload` | 是 | 已实现 | 标准项目级图片上传入口。 |
+| `GET` | `/api/v1/projects/{project_id}/pages` | 是 | 已实现 | 获取项目页面列表。 |
+| `GET` | `/api/v1/projects/{project_id}/me/capabilities` | 是 | 已实现 | 获取当前用户在项目中的 capability 映射。 |
+| `GET` | `/api/v1/projects/{project_id}/labels` | 是 | 已实现 | 获取项目标签注册表。 |
 | `POST` | `/api/v1/assets/upload` | 是 | 兼容入口 | M3 简化上传入口，project_id 放在 form 中。 |
 | `GET` | `/api/v1/pages/{page_id}` | 是 | 已实现 | 获取页面详情和图片元数据。 |
+| `DELETE` | `/api/v1/pages/{page_id}` | 是 | 已实现 | 删除页面。 |
 | `GET` | `/api/v1/pages/{page_id}/image` | 是 | 已实现 | 获取页面图片短期签名访问 URL。 |
 | `GET` | `/api/v1/pages/{page_id}/image/raw?exp=&sig=` | 否 | 已实现 | 读取页面图片文件；依赖短期签名 URL。 |
 | `GET` | `/api/v1/pages/{page_id}/annotation/latest` | 是 | 已实现 | 读取页面最新标注 revision。 |
 | `POST` | `/api/v1/pages/{page_id}/annotation/revisions` | 是 | 已实现 | 创建新的整页标注 revision。 |
+| `GET` | `/api/v1/pages/{page_id}/annotation/revisions` | 是 | 已实现 | 列出页面标注版本。 |
+| `GET` | `/api/v1/pages/{page_id}/annotation/revisions/{revision_id}` | 是 | 已实现 | 读取页面指定标注版本。 |
+| `GET` | `/api/v1/pages/{page_id}/qc` | 是 | 已实现 | 获取页面 QC 问题列表。 |
 
 ---
 
@@ -368,9 +394,243 @@ Form 字段：
 
 ---
 
-## 7. 项目配置
+## 7. 项目与标签
 
-### 7.1 获取项目标签注册表
+### 7.1 获取项目列表
+
+```http
+GET /api/v1/projects
+Authorization: Bearer <access_token>
+```
+
+鉴权：需要登录。
+
+当前行为：
+
+```text
+1. 当前实现只返回 current_user.created_by == 当前用户 的项目，不展开项目成员关系。
+2. 响应按 created_at 倒序返回。
+```
+
+成功响应：
+
+```json
+{
+  "items": [
+    {
+      "id": 1,
+      "name": "K12 示例项目",
+      "description": "项目说明",
+      "schema_version": "v1",
+      "created_by": 99,
+      "created_at": "2026-06-11T10:00:00Z",
+      "updated_at": "2026-06-11T10:00:00Z"
+    }
+  ],
+  "total": 1
+}
+```
+
+错误：
+
+| HTTP 状态码 | 场景 |
+|---|---|
+| `401` | 未登录或认证失效。 |
+
+### 7.2 创建项目
+
+```http
+POST /api/v1/projects
+Authorization: Bearer <access_token>
+Content-Type: application/json
+```
+
+鉴权：需要登录。
+
+请求体：
+
+```json
+{
+  "name": "K12 示例项目",
+  "description": "项目说明"
+}
+```
+
+成功响应：返回单个 `ProjectOut`，字段与项目列表中的单项一致，HTTP 状态码为 `201`。
+
+错误：
+
+| HTTP 状态码 | 场景 |
+|---|---|
+| `401` | 未登录或认证失效。 |
+| `422` | 项目名称缺失、为空或字段类型不合法。 |
+
+### 7.3 获取项目详情
+
+```http
+GET /api/v1/projects/{project_id}
+Authorization: Bearer <access_token>
+```
+
+鉴权：需要登录，且当前实现仅允许项目创建者访问。
+
+路径参数：
+
+| 参数 | 类型 | 说明 |
+|---|---|---|
+| `project_id` | integer | 项目数据库内部主键。 |
+
+成功响应：返回单个 `ProjectOut`。
+
+错误：
+
+| HTTP 状态码 | 场景 |
+|---|---|
+| `401` | 未登录或认证失效。 |
+| `403` | 当前用户不是项目创建者。 |
+| `404` | 项目不存在。 |
+
+### 7.4 更新项目
+
+```http
+PATCH /api/v1/projects/{project_id}
+Authorization: Bearer <access_token>
+Content-Type: application/json
+```
+
+鉴权：需要登录，且当前实现仅允许项目创建者操作。
+
+请求体：
+
+```json
+{
+  "name": "新的项目名称",
+  "description": "新的项目说明"
+}
+```
+
+字段均为可选；至少应提供一个变更字段。
+
+成功响应：返回更新后的 `ProjectOut`。
+
+错误：
+
+| HTTP 状态码 | 场景 |
+|---|---|
+| `401` | 未登录或认证失效。 |
+| `403` | 当前用户不是项目创建者。 |
+| `404` | 项目不存在。 |
+| `422` | 字段类型不合法，或名称为空字符串。 |
+
+### 7.5 删除项目
+
+```http
+DELETE /api/v1/projects/{project_id}
+Authorization: Bearer <access_token>
+```
+
+鉴权：需要登录，且当前实现仅允许项目创建者操作。
+
+成功响应：
+
+```text
+HTTP 204 No Content
+```
+
+错误：
+
+| HTTP 状态码 | 场景 |
+|---|---|
+| `401` | 未登录或认证失效。 |
+| `403` | 当前用户不是项目创建者。 |
+| `404` | 项目不存在。 |
+
+### 7.6 获取项目页面列表
+
+```http
+GET /api/v1/projects/{project_id}/pages
+Authorization: Bearer <access_token>
+```
+
+鉴权：需要登录，并具备 `can_view_project`。
+
+成功响应：
+
+```json
+{
+  "items": [
+    {
+      "id": 30,
+      "page_id": "page_public_001",
+      "project_id": 10,
+      "filename": "exam-page-1.png",
+      "status": "imported",
+      "width": 1200,
+      "height": 1600,
+      "created_at": "2026-06-11T10:00:00Z",
+      "updated_at": "2026-06-11T10:00:00Z"
+    }
+  ],
+  "total": 1
+}
+```
+
+错误：
+
+| HTTP 状态码 | 场景 |
+|---|---|
+| `401` | 未登录或认证失效。 |
+| `403` | 缺少 `can_view_project`。 |
+| `404` | 项目不存在。 |
+
+### 7.7 获取当前用户项目能力
+
+```http
+GET /api/v1/projects/{project_id}/me/capabilities
+Authorization: Bearer <access_token>
+```
+
+鉴权：需要登录。
+
+当前行为：
+
+```text
+1. 项目创建者默认拥有全部项目级 capability。
+2. 非创建者通过 project_members / role_registry 聚合 capability。
+3. 系统管理员额外附加 can_manage_system_users。
+```
+
+成功响应：
+
+```json
+{
+  "can_view_project": true,
+  "can_create_annotation_revision": true,
+  "can_submit_revision": false,
+  "can_review_revision": false,
+  "can_create_export_job": false,
+  "can_download_export": false,
+  "can_manage_project_members": true,
+  "can_manage_labels": true,
+  "can_manage_relations": true,
+  "can_lock_revision": false,
+  "can_unlock_revision": false,
+  "can_rollback_revision": false,
+  "can_upload_assets": true,
+  "can_import_pages": true,
+  "can_view_audit_log": false,
+  "can_manage_system_users": false
+}
+```
+
+错误：
+
+| HTTP 状态码 | 场景 |
+|---|---|
+| `401` | 未登录或认证失效。 |
+| `404` | 项目不存在。 |
+
+### 7.8 获取项目标签注册表
 
 ```http
 GET /api/v1/projects/{project_id}/labels
@@ -509,7 +769,39 @@ Authorization: Bearer <access_token>
 | `403` | 缺少 `can_view_project`。 |
 | `404` | 页面不存在。 |
 
-### 8.2 获取页面图片签名 URL
+### 8.2 删除页面
+
+```http
+DELETE /api/v1/pages/{page_id}
+Authorization: Bearer <access_token>
+```
+
+鉴权：需要登录，并具备 `can_manage_project_members`。
+
+当前行为：
+
+```text
+1. 先按 page_id 查页面和所属项目。
+2. 再校验 can_manage_project_members。
+3. 如果页面仍存在关联数据导致数据库删除失败，返回 409。
+```
+
+成功响应：
+
+```text
+HTTP 204 No Content
+```
+
+错误：
+
+| HTTP 状态码 | 场景 |
+|---|---|
+| `401` | 未登录或认证失效。 |
+| `403` | 缺少 `can_manage_project_members`。 |
+| `404` | 页面不存在。 |
+| `409` | 页面存在关联数据，无法删除。 |
+
+### 8.3 获取页面图片签名 URL
 
 ```http
 GET /api/v1/pages/{page_id}/image
@@ -556,7 +848,7 @@ Authorization: Bearer <access_token>
 | `403` | 缺少 `can_view_project`。 |
 | `404` | 页面不存在。 |
 
-### 8.3 读取页面图片文件
+### 8.4 读取页面图片文件
 
 ```http
 GET /api/v1/pages/{page_id}/image/raw?exp=1760000000&sig=base64url_hmac
@@ -590,7 +882,7 @@ GET /api/v1/pages/{page_id}/image/raw?exp=1760000000&sig=base64url_hmac
 | `401` | `exp` 已过期、超出允许窗口或 `sig` 校验失败。 |
 | `404` | 页面不存在、页面未绑定图片、资产不存在或磁盘文件缺失。 |
 
-### 8.4 读取页面最新标注版本
+### 8.5 读取页面最新标注版本
 
 ```http
 GET /api/v1/pages/{page_id}/annotation/latest
@@ -652,7 +944,7 @@ Authorization: Bearer <access_token>
 | `404` | 页面不存在。 |
 | `500` | 标注 JSON 资产缺失或读取失败。 |
 
-### 8.5 创建页面标注版本
+### 8.6 创建页面标注版本
 
 ```http
 POST /api/v1/pages/{page_id}/annotation/revisions
@@ -775,6 +1067,121 @@ Content-Type: application/json
 | `422` | annotation JSON、几何、read_order 或 relation 校验失败。 |
 | `500` | revision JSON 写入、读取或数据库登记失败。 |
 
+### 8.7 列出页面标注版本
+
+```http
+GET /api/v1/pages/{page_id}/annotation/revisions?limit=50&offset=0
+Authorization: Bearer <access_token>
+```
+
+鉴权：需要登录，并具备 `can_view_project`。
+
+查询参数：
+
+| 参数 | 类型 | 默认值 | 说明 |
+|---|---|---|---|
+| `limit` | integer | `50` | 分页大小，范围 `1..200`。 |
+| `offset` | integer | `0` | 偏移量。 |
+
+成功响应：
+
+```json
+{
+  "items": [
+    {
+      "revision_id": "rev_xxx",
+      "page_id": "page_xxx",
+      "revision_no": 3,
+      "status": "draft",
+      "qc_status": "pending",
+      "created_at": "2026-06-11T10:00:00Z",
+      "change_summary": "修正题目框"
+    }
+  ],
+  "total": 1
+}
+```
+
+错误：
+
+| HTTP 状态码 | 场景 |
+|---|---|
+| `401` | 未登录或认证失效。 |
+| `403` | 缺少 `can_view_project`。 |
+| `404` | 页面不存在。 |
+
+### 8.8 读取页面指定标注版本
+
+```http
+GET /api/v1/pages/{page_id}/annotation/revisions/{revision_id}
+Authorization: Bearer <access_token>
+```
+
+鉴权：需要登录，并具备 `can_view_project`。
+
+成功响应：与 `GET /pages/{page_id}/annotation/latest` 一致，但返回指定的 `revision_id`。
+
+错误：
+
+| HTTP 状态码 | 场景 |
+|---|---|
+| `401` | 未登录或认证失效。 |
+| `403` | 缺少 `can_view_project`。 |
+| `404` | 页面不存在，或指定 revision 不存在于该页面。 |
+| `500` | 标注 JSON 资产缺失或读取失败。 |
+
+### 8.9 获取页面 QC 问题列表
+
+```http
+GET /api/v1/pages/{page_id}/qc
+Authorization: Bearer <access_token>
+```
+
+鉴权：需要登录，并具备 `can_view_project`。
+
+成功响应：
+
+```json
+{
+  "items": [
+    {
+      "id": "40",
+      "page_id": "page_public_001",
+      "annotation_id": null,
+      "severity": "warning",
+      "code": "bbox_overlap",
+      "message": "Boxes overlap",
+      "details": {
+        "suggestion": "Split the regions"
+      },
+      "created_at": "2026-06-11T10:00:00Z"
+    }
+  ],
+  "total": 1
+}
+```
+
+字段说明：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `items[].id` | string | QC 结果内部主键转字符串。 |
+| `items[].page_id` | string | 页面公开稳定编号。 |
+| `items[].annotation_id` | string/null | 当前实现暂未回填对象级 annotation id。 |
+| `items[].severity` | string | 直接复用 `qc_results.status`，当前值域与后端状态保持一致。 |
+| `items[].code` | string | QC 规则类型，如 `bbox_overlap`。 |
+| `items[].message` | string | QC 摘要信息。 |
+| `items[].details` | object/null | QC 明细。 |
+| `items[].created_at` | string/null | ISO-8601 时间。 |
+
+错误：
+
+| HTTP 状态码 | 场景 |
+|---|---|
+| `401` | 未登录或认证失效。 |
+| `403` | 缺少 `can_view_project`。 |
+| `404` | 页面不存在，或页面关联文档不存在。 |
+
 ---
 
 ## 9. 当前错误响应约定
@@ -843,6 +1250,6 @@ M4 页面与标注 revision 接口当前使用的业务错误 code：
 2. 如果接口只处于规划阶段，不写入“接口总览”的已实现列表，应写入后端设计文档。
 3. 如果 schema 字段变化，必须同步更新请求示例、响应示例和字段说明。
 4. 如果权限 capability 变化，必须同步更新“全局约定”和具体接口章节。
-5. 如果错误响应结构统一改造，需要同步更新第 8 章。
+5. 如果错误响应结构统一改造，需要同步更新第 9 章。
 6. 如果后端 API 文档路径变化，需要同步更新 doc/开发文档/后端/INDEX.md。
 ```

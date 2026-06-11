@@ -5,6 +5,7 @@ Revises: 20260603_0002
 Create Date: 2026-06-08
 """
 
+import logging
 import os
 from pathlib import Path
 from typing import Sequence
@@ -16,6 +17,8 @@ revision: str = "20260608_0003"
 down_revision: str | None = "20260603_0002"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
+
+logger = logging.getLogger(__name__)
 
 
 def _load_env_file() -> None:
@@ -45,7 +48,9 @@ def upgrade() -> None:
     username = os.getenv("SEED_ADMIN_USERNAME", "admin")
     password = os.getenv("SEED_ADMIN_PASSWORD")
     if not password:
-        # 未设置密码则跳过，避免写入空密码
+        logger.warning(
+            "Skipping default admin seed because SEED_ADMIN_PASSWORD is not set."
+        )
         return
 
     salt = secrets.token_urlsafe(16)

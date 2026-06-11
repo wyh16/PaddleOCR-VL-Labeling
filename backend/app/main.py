@@ -16,8 +16,10 @@ ALEMBIC_DIR = Path(__file__).resolve().parent.parent
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """启动时自动执行 alembic upgrade head，确保数据库 schema 和 seed 数据就绪。"""
-    _run_migrations()
+    """按配置决定是否在启动时执行 alembic upgrade head。"""
+    settings = get_settings()
+    if settings.auto_migrate_on_startup:
+        _run_migrations()
     yield
 
 
@@ -35,13 +37,20 @@ def _run_migrations() -> None:
             if result.stdout.strip():
                 logger.info(result.stdout.strip())
         else:
-            logger.error("Alembic migration failed:\n%s", result.stderr)
+            stderr = result.stderr.strip() or result.stdout.strip() or "unknown error"
+            raise RuntimeError(f"Alembic migration failed: {stderr}")
     except FileNotFoundError:
-        logger.warning("alembic not found, skipping auto-migration")
+        raise RuntimeError(
+            "Alembic executable not found; cannot run startup migrations."
+        )
     except subprocess.TimeoutExpired:
-        logger.error("Alembic migration timed out after 60s")
+        raise RuntimeError("Alembic migration timed out after 60s.")
+    except RuntimeError:
+        logger.exception("Startup migration failed")
+        raise
     except Exception as exc:
-        logger.error("Unexpected error during auto-migration: %s", exc)
+        logger.exception("Startup migration failed")
+        raise RuntimeError("Startup migration failed.") from exc
 
 
 def create_app() -> FastAPI:
