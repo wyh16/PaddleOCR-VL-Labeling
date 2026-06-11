@@ -8,6 +8,8 @@ class FakeXMLHttpRequest {
   upload: { onprogress?: (event: { lengthComputable: boolean; loaded: number; total: number }) => void } = {}
   onload: (() => void) | null = null
   onerror: (() => void) | null = null
+  ontimeout: (() => void) | null = null
+  onabort: (() => void) | null = null
   status = 0
   responseText = ''
   method = ''
@@ -32,6 +34,7 @@ class FakeXMLHttpRequest {
 
   abort() {
     this.aborted = true
+    this.onabort?.()
   }
 }
 
@@ -102,5 +105,57 @@ describe('assetsApi.uploadWithProgress', () => {
       details: { project_id: 'p1' },
     })
   })
-})
 
+  it('413 错误保留统一错误对象字段', async () => {
+    const file = new File(['image'], 'page.png', { type: 'image/png' })
+
+    const { promise } = assetsApi.uploadWithProgress('p1', file, vi.fn())
+    const xhr = FakeXMLHttpRequest.lastInstance!
+
+    xhr.status = 413
+    xhr.responseText = JSON.stringify({
+      error: {
+        code: 'FILE_TOO_LARGE',
+        message: 'File too large',
+        details: { max_size_mb: 20 },
+      },
+      request_id: 'req_413',
+    })
+    xhr.onload?.()
+
+    await expect(promise).rejects.toMatchObject({
+      status: 413,
+      code: 'FILE_TOO_LARGE',
+      requestId: 'req_413',
+      details: { max_size_mb: 20 },
+    })
+  })
+
+  it('超时返回统一网络错误', async () => {
+    const file = new File(['image'], 'page.png', { type: 'image/png' })
+
+    const { promise } = assetsApi.uploadWithProgress('p1', file, vi.fn())
+    const xhr = FakeXMLHttpRequest.lastInstance!
+    xhr.ontimeout?.()
+
+    await expect(promise).rejects.toMatchObject({
+      status: 0,
+      message: 'errors.network',
+    })
+  })
+
+  it('取消上传返回可识别的中止错误', async () => {
+    const file = new File(['image'], 'page.png', { type: 'image/png' })
+
+    const { promise, abort } = assetsApi.uploadWithProgress('p1', file, vi.fn())
+    const xhr = FakeXMLHttpRequest.lastInstance!
+    abort()
+
+    expect(xhr.aborted).toBe(true)
+    await expect(promise).rejects.toMatchObject({
+      status: 0,
+      code: 'REQUEST_ABORTED',
+      message: 'errors.network',
+    })
+  })
+})

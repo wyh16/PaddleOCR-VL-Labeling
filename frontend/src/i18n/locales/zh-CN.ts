@@ -23,6 +23,7 @@ export default {
     searchPlaceholder: '搜索项目、任务、文件等',
     breadcrumb: '面包屑导航',
     fullscreen: '全屏',
+    featureNotAvailable: '功能开发中',
   },
   app: {
     logoName: '数据标注平台',
@@ -119,9 +120,9 @@ export default {
       targetObject: '对象 {id}',
       suggestion: '建议',
       severity: {
-        error: '错误',
+        passed: '通过',
         warning: '警告',
-        info: '提示',
+        failed: '失败',
       },
     },
     properties: {
@@ -250,5 +251,6 @@ export default {
     badRequest: '请求参数错误',
     conflict: '数据冲突，请刷新后重试',
     validation: '数据校验失败',
+    requestIdLabel: '请求 ID',
   },
 }

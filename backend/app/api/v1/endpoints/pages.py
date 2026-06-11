@@ -484,6 +484,22 @@ def list_page_qc(
             details={"page_id": page_id},
         )
 
+    document = db.get(Document, page.document_id)
+    if not document:
+        return _error_response(
+            status_code=status.HTTP_404_NOT_FOUND,
+            code="DOCUMENT_NOT_FOUND",
+            message="Document not found for page",
+            details={"page_id": page_id},
+        )
+
+    ensure_project_capability(
+        db,
+        user_id=current_user.id,
+        project_id=document.project_id,
+        capability="can_view_project",
+    )
+
     rows = db.scalars(
         select(QcResult)
         .where(QcResult.page_id == page.id)
@@ -524,6 +540,13 @@ def list_project_pages(
             code="PROJECT_NOT_FOUND",
             message="Project not found",
         )
+
+    ensure_project_capability(
+        db,
+        user_id=current_user.id,
+        project_id=project_id,
+        capability="can_view_project",
+    )
 
     stmt = (
         select(Page, Document)

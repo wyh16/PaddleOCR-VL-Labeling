@@ -23,6 +23,7 @@ export default {
     searchPlaceholder: 'Search projects, tasks, files...',
     breadcrumb: 'Breadcrumb',
     fullscreen: 'Fullscreen',
+    featureNotAvailable: 'Feature in development',
   },
   app: {
     logoName: 'Data Labeling',
@@ -119,9 +120,9 @@ export default {
       targetObject: 'Object {id}',
       suggestion: 'Suggestion',
       severity: {
-        error: 'Error',
+        passed: 'Passed',
         warning: 'Warning',
-        info: 'Info',
+        failed: 'Failed',
       },
     },
     properties: {
@@ -250,5 +251,6 @@ export default {
     badRequest: 'Invalid request',
     conflict: 'Data conflict, please refresh and try again',
     validation: 'Validation failed',
+    requestIdLabel: 'Request ID',
   },
 }

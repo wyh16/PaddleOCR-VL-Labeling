@@ -4,7 +4,7 @@ import type { QcIssue } from '@/api/qc'
 import { getQcIssueSuggestion, getQcIssueTarget, getQcOverlayRegions, groupQcIssues } from '../workspaceQc'
 
 describe('groupQcIssues', () => {
-  it('按 error > warning > info 分组并保持固定顺序', () => {
+  it('按 failed > warning > passed 分组并保持固定顺序', () => {
     const issues: QcIssue[] = [
       {
         id: '2',
@@ -17,7 +17,7 @@ describe('groupQcIssues', () => {
       {
         id: '1',
         page_id: 'page_1',
-        severity: 'error',
+        severity: 'failed',
         code: 'schema',
         message: 'error issue',
         created_at: '2026-06-11T09:00:00Z',
@@ -25,7 +25,7 @@ describe('groupQcIssues', () => {
       {
         id: '3',
         page_id: 'page_1',
-        severity: 'info',
+        severity: 'passed',
         code: 'dataset',
         message: 'info issue',
         created_at: '2026-06-11T11:00:00Z',
@@ -33,9 +33,9 @@ describe('groupQcIssues', () => {
     ]
 
     expect(groupQcIssues(issues)).toEqual([
-      { severity: 'error', items: [issues[1]] },
+      { severity: 'failed', items: [issues[1]] },
       { severity: 'warning', items: [issues[0]] },
-      { severity: 'info', items: [issues[2]] },
+      { severity: 'passed', items: [issues[2]] },
     ])
   })
 })
@@ -46,7 +46,7 @@ describe('getQcIssueTarget', () => {
       id: 'qc_1',
       page_id: 'page_1',
       annotation_id: 'ann_1',
-      severity: 'error',
+      severity: 'failed',
       code: 'geometry',
       message: 'bbox 越界',
       details: {
@@ -87,7 +87,7 @@ describe('getQcIssueTarget', () => {
     const issue: QcIssue = {
       id: 'qc_3',
       page_id: 'page_1',
-      severity: 'info',
+      severity: 'passed',
       code: 'dataset',
       message: '页面级提示',
       details: {},
@@ -123,7 +123,7 @@ describe('getQcIssueSuggestion', () => {
     const issue: QcIssue = {
       id: 'qc_5',
       page_id: 'page_1',
-      severity: 'info',
+      severity: 'passed',
       code: 'dataset',
       message: '页面级提示',
       details: {},
@@ -140,7 +140,7 @@ describe('getQcOverlayRegions', () => {
       {
         id: 'qc_1',
         page_id: 'page_1',
-        severity: 'error',
+        severity: 'failed',
         code: 'geometry',
         message: 'bbox 越界',
         details: { bbox_xyxy: [10, 20, 30, 40] },
@@ -158,7 +158,7 @@ describe('getQcOverlayRegions', () => {
       {
         id: 'qc_3',
         page_id: 'page_1',
-        severity: 'info',
+        severity: 'passed',
         code: 'dataset',
         message: '页面级提示',
         details: {},
@@ -169,7 +169,7 @@ describe('getQcOverlayRegions', () => {
     expect(getQcOverlayRegions(issues)).toEqual([
       {
         issueId: 'qc_1',
-        severity: 'error',
+        severity: 'failed',
         bbox: [10, 20, 30, 40],
       },
       {

@@ -32,6 +32,22 @@ export interface AssetUploadResponse {
   request_id: string
 }
 
+function createUploadNetworkError(): ApiClientError {
+  return new ApiClientError({ message: 'errors.network', status: 0 })
+}
+
+function createUploadAbortError(): ApiClientError {
+  return new ApiClientError({
+    message: 'errors.network',
+    status: 0,
+    code: 'REQUEST_ABORTED',
+  })
+}
+
+function createUploadUnknownError(status: number): ApiClientError {
+  return new ApiClientError({ message: 'errors.unknown', status })
+}
+
 export const assetsApi = {
   /** 获取资产详情 */
   get: (assetId: string) =>
@@ -67,7 +83,11 @@ export const assetsApi = {
       }
 
       xhr.ontimeout = () => {
-        reject(new ApiClientError({ message: 'errors.network', status: 0 }))
+        reject(createUploadNetworkError())
+      }
+
+      xhr.onabort = () => {
+        reject(createUploadAbortError())
       }
 
       xhr.onload = () => {
@@ -75,7 +95,7 @@ export const assetsApi = {
           try {
             resolve(JSON.parse(xhr.responseText) as AssetUploadResponse)
           } catch {
-            reject(new ApiClientError({ message: 'errors.unknown', status: xhr.status }))
+            reject(createUploadUnknownError(xhr.status))
           }
           return
         }
@@ -84,12 +104,12 @@ export const assetsApi = {
           const body = JSON.parse(xhr.responseText)
           reject(new ApiClientError(parseApiErrorBody(body, xhr.status)))
         } catch {
-          reject(new ApiClientError({ message: 'errors.unknown', status: xhr.status }))
+          reject(createUploadUnknownError(xhr.status))
         }
       }
 
       xhr.onerror = () => {
-        reject(new ApiClientError({ message: 'errors.network', status: 0 }))
+        reject(createUploadNetworkError())
       }
 
       const formData = new FormData()

@@ -21,9 +21,3 @@ export type { Asset, AssetUploadResponse } from './assets'
 
 export { qcApi } from './qc'
 export type { QcIssue, QcListResponse, QcSeverity } from './qc'
-
-export { exportsApi } from './exports'
-export type { ExportJob, ExportListResponse, ExportStatus } from './exports'
-
-export { jobsApi } from './jobs'
-export type { Job, JobListResponse, JobStatus, JobType } from './jobs'

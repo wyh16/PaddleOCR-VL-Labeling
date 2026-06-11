@@ -17,7 +17,7 @@ export interface QcOverlayRegion {
   bbox: [number, number, number, number]
 }
 
-const SEVERITY_ORDER: QcSeverity[] = ['error', 'warning', 'info']
+const SEVERITY_ORDER: QcSeverity[] = ['failed', 'warning', 'passed']
 
 function isNumberArray(value: unknown, length: number): value is number[] {
   return Array.isArray(value) && value.length === length && value.every(item => typeof item === 'number')

@@ -24,7 +24,7 @@ interface Props {
   } | null
   qcOverlays?: Array<{
     issueId: string
-    severity: 'error' | 'warning' | 'info'
+    severity: 'passed' | 'warning' | 'failed'
     bbox: [number, number, number, number]
   }>
   activeQcIssueId?: string | null
@@ -91,10 +91,10 @@ const viewportQcOverlays = computed(() => {
   })
 })
 
-function getQcOverlayStroke(severity: 'error' | 'warning' | 'info'): string {
-  if (severity === 'error') return '#da1e28'
+function getQcOverlayStroke(severity: 'passed' | 'warning' | 'failed'): string {
+  if (severity === 'failed') return '#da1e28'
   if (severity === 'warning') return '#dd5b00'
-  return '#0f62fe'
+  return '#24a148'
 }
 
 // ── 视口坐标 → 原图坐标（标注存储用） ──

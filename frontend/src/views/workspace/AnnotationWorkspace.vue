@@ -275,9 +275,9 @@ function getQcIssueTargetLabel(issue: QcIssue): string {
 }
 
 function getQcIssueSeverityClass(severity: QcIssue['severity']): string {
-  if (severity === 'error') return 'bg-danger-bg text-danger'
+  if (severity === 'failed') return 'bg-danger-bg text-danger'
   if (severity === 'warning') return 'bg-warning-bg text-warning'
-  return 'bg-surface-alt text-text-secondary'
+  return 'bg-success-bg text-success'
 }
 
 function getQcIssueSuggestionText(issue: QcIssue): string | null {

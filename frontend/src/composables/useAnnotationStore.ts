@@ -403,7 +403,7 @@ export function useAnnotationStore() {
       schema_version: 'k12_annotation_v0.1',
       page_id: pageId,
       k12_annotations: objects.value.map(o => {
-        const ann: Record<string, unknown> = {
+        const ann: BackendAnnotation = {
           id: o.id,
           type: o.type,
           label_namespace: o.label_namespace,

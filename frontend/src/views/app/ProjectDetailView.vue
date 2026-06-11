@@ -6,10 +6,9 @@
 import { computed, ref, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { ApiClientError } from '@/api/client'
 import { pagesApi, type Page } from '@/api/pages'
 import { assetsApi } from '@/api/assets'
-import { qcApi, type QcIssue, type QcSeverity } from '@/api/qc'
+import { formatProjectDetailError } from './projectDetailErrors'
 import { FileCheck, AlertCircle, Loader2, FileImage, PenTool, X, RotateCcw, Upload } from 'lucide-vue-next'
 
 const { t } = useI18n()
@@ -40,9 +39,6 @@ function openWorkspace(pageId: string) {
 
 onMounted(() => {
   loadPages()
-  if (activeTab.value === 'qc') {
-    loadQcIssues()
-  }
 })
 
 const activeTab = ref((route.query.tab as string) || 'pages')
@@ -109,6 +105,7 @@ interface UploadItem {
 
 const uploadItems = ref<UploadItem[]>([])
 let idCounter = 0
+const deleteError = ref('')
 
 function addFiles(files: File[]) {
   const imageFiles = files.filter(f => f.type.startsWith('image/'))
@@ -141,6 +138,7 @@ function startUpload() {
 function uploadSingle(item: UploadItem) {
   item.status = 'uploading'
   item.progress = 0
+  item.error = undefined
 
   const { promise, abort } = assetsApi.uploadWithProgress(
     projectId.value,
@@ -161,21 +159,16 @@ function uploadSingle(item: UploadItem) {
     }, 800)
     loadPages()
   }).catch((e) => {
+    if (item.status === 'cancelled') return
     item.status = 'error'
-    if (e instanceof ApiClientError) {
-      if (e.status === 0) item.error = t('errors.network')
-      else if (e.status === 403) item.error = t('errors.forbidden')
-      else if (e.status === 401) item.error = t('errors.unauthorized')
-      else item.error = t('upload.failed')
-      return
-    }
-    item.error = t('upload.failed')
+    item.error = formatProjectDetailError(t, e, 'upload.failed')
   }).finally(() => {
     item.abort = undefined
   })
 }
 
 function cancelUpload(item: UploadItem) {
+  item.error = undefined
   item.abort?.()
   item.abort = undefined
   item.status = 'cancelled'
@@ -223,88 +216,17 @@ async function deletePage(pageId: string, e: Event) {
   e.stopPropagation()
   if (!confirm(t('upload.deleteConfirm'))) return
   deletingId.value = pageId
+  deleteError.value = ''
   try {
     await pagesApi.delete(pageId)
     pages.value = pages.value.filter(p => p.page_id !== pageId)
-  } catch { /* ignore */ }
-  deletingId.value = null
-}
-
-// ── QC 质检 ──
-const qcIssues = ref<QcIssue[]>([])
-const qcLoading = ref(false)
-const qcSeverityFilter = ref<QcSeverity | ''>('')
-const qcPage = ref(1)
-const qcTotal = ref(0)
-const qcPageSize = 20
-
-const SEVERITY_ORDER: QcSeverity[] = ['error', 'warning', 'info']
-
-const groupedQcIssues = computed(() => {
-  return SEVERITY_ORDER
-    .map(severity => ({
-      severity,
-      items: qcIssues.value.filter(issue => issue.severity === severity),
-    }))
-    .filter(group => group.items.length > 0)
-})
-
-const qcSeverityCounts = computed(() => {
-  const counts: Record<QcSeverity, number> = { error: 0, warning: 0, info: 0 }
-  for (const issue of qcIssues.value) {
-    counts[issue.severity]++
-  }
-  return counts
-})
-
-async function loadQcIssues() {
-  qcLoading.value = true
-  try {
-    const params: { page?: number; page_size?: number; severity?: QcSeverity } = {
-      page: qcPage.value,
-      page_size: qcPageSize,
-    }
-    if (qcSeverityFilter.value) {
-      params.severity = qcSeverityFilter.value
-    }
-    const res = await qcApi.listByProject(projectId.value, params)
-    qcIssues.value = res.items
-    qcTotal.value = res.total
-  } catch {
-    qcIssues.value = []
-    qcTotal.value = 0
+  } catch (e) {
+    deleteError.value = formatProjectDetailError(t, e, 'errors.server')
   } finally {
-    qcLoading.value = false
+    deletingId.value = null
   }
 }
 
-function setQcSeverityFilter(severity: QcSeverity | '') {
-  qcSeverityFilter.value = severity
-  qcPage.value = 1
-  loadQcIssues()
-}
-
-function getQcSeverityClass(severity: QcSeverity): string {
-  if (severity === 'error') return 'bg-danger-bg text-danger'
-  if (severity === 'warning') return 'bg-warning-bg text-warning'
-  return 'bg-surface-alt text-text-secondary'
-}
-
-function openQcIssuePage(issue: QcIssue) {
-  if (issue.page_id) {
-    router.push({
-      name: 'pages.workspace',
-      params: { page_id: issue.page_id },
-      query: { issue_id: issue.id },
-    })
-  }
-}
-
-watch(activeTab, (tab) => {
-  if (tab === 'qc' && qcIssues.value.length === 0) {
-    loadQcIssues()
-  }
-})
 </script>
 
 <template>
@@ -441,6 +363,11 @@ watch(activeTab, (tab) => {
         <div class="mt-6">
           <h3 class="text-body-medium text-text mb-3">{{ t('routes.projects.tabs.pages') }}</h3>
 
+          <div v-if="deleteError"
+            class="mb-3 rounded-lg border border-danger/30 bg-danger-bg px-4 py-3 text-caption text-danger">
+            {{ deleteError }}
+          </div>
+
           <div v-if="pagesLoading" class="space-y-2">
             <div v-for="i in 3" :key="i" class="h-16 bg-surface-alt rounded-lg animate-pulse"></div>
           </div>
@@ -477,68 +404,11 @@ watch(activeTab, (tab) => {
         </div>
       </section>
 
-      <section v-else-if="activeTab === 'qc'">
-        <!-- QC 筛选栏 -->
-        <div class="flex items-center gap-2 mb-4">
-          <button type="button"
-            class="rounded-md px-3 py-1.5 text-caption font-medium transition-colors"
-            :class="qcSeverityFilter === ''
-              ? 'bg-primary/10 text-primary'
-              : 'text-text-secondary hover:bg-surface-muted hover:text-text'"
-            @click="setQcSeverityFilter('')">
-            {{ t('annotation.qc.count', { count: qcTotal }) }}
-          </button>
-          <button v-for="severity in SEVERITY_ORDER" :key="severity" type="button"
-            class="rounded-md px-3 py-1.5 text-caption font-medium transition-colors"
-            :class="qcSeverityFilter === severity
-              ? 'bg-primary/10 text-primary'
-              : 'text-text-secondary hover:bg-surface-muted hover:text-text'"
-            @click="setQcSeverityFilter(severity)">
-            {{ t(`annotation.qc.severity.${severity}`) }} ({{ qcSeverityCounts[severity] }})
-          </button>
+      <template v-else-if="activeTab === 'jobs' || activeTab === 'exports' || activeTab === 'qc'">
+        <div class="text-center py-8 text-gray-400">
+          {{ t('common.featureNotAvailable') }}
         </div>
-
-        <!-- QC 加载中 -->
-        <div v-if="qcLoading" class="space-y-2">
-          <div v-for="i in 3" :key="i" class="h-20 bg-surface-alt rounded-lg animate-pulse"></div>
-        </div>
-
-        <!-- QC 空状态 -->
-        <div v-else-if="qcIssues.length === 0"
-          class="rounded-lg border border-dashed border-border bg-surface px-6 py-12 text-center text-text-muted">
-          {{ t('annotation.qc.empty') }}
-        </div>
-
-        <!-- QC 问题列表 -->
-        <div v-else class="space-y-4">
-          <div v-for="group in groupedQcIssues" :key="group.severity" class="space-y-2">
-            <div class="flex items-center justify-between">
-              <span class="text-micro font-medium uppercase tracking-wider text-text-tertiary">
-                {{ t(`annotation.qc.severity.${group.severity}`) }}
-              </span>
-              <span class="text-micro text-text-muted">{{ group.items.length }}</span>
-            </div>
-            <div v-for="issue in group.items" :key="issue.id"
-              class="rounded-lg border border-border bg-surface p-3 hover:border-primary/40 cursor-pointer transition-colors"
-              @click="openQcIssuePage(issue)">
-              <div class="flex items-center justify-between gap-2 mb-1">
-                <span class="font-mono text-micro text-text-tertiary">{{ issue.code }}</span>
-                <span class="rounded px-1.5 py-0.5 text-micro font-medium"
-                  :class="getQcSeverityClass(issue.severity)">
-                  {{ t(`annotation.qc.severity.${issue.severity}`) }}
-                </span>
-              </div>
-              <div class="text-caption text-text mb-1">{{ issue.message }}</div>
-              <div class="text-micro text-text-muted">
-                {{ issue.page_id ? `Page: ${issue.page_id}` : t('annotation.qc.pageLevel') }}
-              </div>
-              <div v-if="issue.details?.suggestion" class="mt-1 text-micro text-text-secondary">
-                {{ t('annotation.qc.suggestion') }}: {{ issue.details.suggestion }}
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
+      </template>
 
       <section v-else
         class="rounded-lg border border-dashed border-border bg-surface px-6 py-12 text-center text-text-muted">

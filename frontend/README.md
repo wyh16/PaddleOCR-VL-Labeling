@@ -10,15 +10,16 @@ doc/开发文档/前端/frontend_development_spec.md
 ## 已包含内容
 
 - Vue 3 + TypeScript + Vite 工程
-- Vue Router 4 路由：`/auth`、`/app`、`/workspace`、404
+- Vue Router 4 路由：`/auth`、`/app`、`/app/pages/:page_id`、`/403`、`/404`
 - Tailwind CSS 3 样式系统
 - vue-i18n 国际化：`zh-CN`、`en-US`
 - API 客户端：`src/api/client.ts`（统一错误处理）
 - 认证 API：`src/api/auth.ts`
 - 项目 API：`src/api/projects.ts`
 - 标注 API：`src/api/annotations.ts`
-- 基础组件：`BaseButton`、`BaseInput`、`BaseModal`
-- Composables：`useAuth`、`useToast`
+- 页面与资源 API：`src/api/pages.ts`、`src/api/assets.ts`、`src/api/qc.ts`
+- 基础组件：`BaseKbd`、`BaseStatusBadge`、`BaseToolbarButton`
+- Composables：`useAuth`、`useAnnotationStore`、`useCanvasRenderer`
 - 工具函数：`format`、`id`
 - 测试示例：`src/utils/__tests__/format.test.ts`
 
@@ -111,10 +112,15 @@ frontend/
     ├── App.vue                   # 根组件
     ├── style.css                 # 全局样式（含颜色 token）
     ├── api/                      # API 封装
-    │   ├── client.ts             # HTTP 客户端
+    │   ├── annotations.ts        # 标注 API
+    │   ├── assets.ts             # 资源上传与访问 API
     │   ├── auth.ts               # 认证 API
+    │   ├── client.ts             # HTTP 客户端
+    │   ├── index.ts              # API 统一导出
+    │   ├── labels.ts             # 标签注册表 API
+    │   ├── pages.ts              # 页面与 capabilities API
     │   ├── projects.ts           # 项目 API
-    │   └── annotations.ts        # 标注 API
+    │   └── qc.ts                 # 页面 QC API
     ├── router/                   # 路由配置
     ├── i18n/                     # 国际化
     │   └── locales/              # 语言包
@@ -145,11 +151,14 @@ VITE_SUPPORTED_LOCALES=zh-CN,en-US
 | `/` | - | 重定向到 `/app/projects` |
 | `/auth/login` | LoginView | 登录页 |
 | `/auth/register` | RegisterView | 注册页 |
+| `/app` | AppLayout | 工作台入口，重定向到 `/app/projects` |
 | `/app/projects` | ProjectsView | 项目列表 |
-| `/app/projects/:id` | ProjectDetailView | 项目详情 |
-| `/app/pages/:id` | AnnotationWorkspace | 标注工作台 |
+| `/app/projects/:project_id` | ProjectDetailView | 项目详情 |
+| `/app/pages/:page_id` | AnnotationWorkspace | 标注工作台 |
 | `/app/settings` | SettingsView | 设置页 |
-| `/*` | NotFoundView | 404 页面 |
+| `/403` | ErrorForbiddenView | 权限不足页 |
+| `/404` | NotFoundView | 404 页面 |
+| `/:pathMatch(.*)*` | - | 重定向到 `/404` |
 
 ## 验收检查
 
