@@ -235,6 +235,13 @@ export function useCanvasRenderer() {
     })
   }
 
+  function clearImage(): void {
+    imageSize.value = { x: 0, y: 0 }
+    imageSource.value = null
+    scale.value = 1
+    offset.value = { x: 0, y: 0 }
+  }
+
   // ── 计算属性 ──
 
   const zoomPercent = computed(() => Math.round(scale.value * 100))
@@ -254,6 +261,7 @@ export function useCanvasRenderer() {
 
     // 图片加载
     loadImage,
+    clearImage,
 
     // 渲染
     render,

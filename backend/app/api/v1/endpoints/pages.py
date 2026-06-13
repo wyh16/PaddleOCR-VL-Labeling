@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
+import secrets
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -54,6 +55,12 @@ from app.storage.local import StorageError
 from app.utils.ids import new_public_id
 
 router = APIRouter(tags=["pages"])
+
+PAGE_IMAGE_RAW_METHOD = "GET"
+PAGE_IMAGE_NONCE_BYTES = 12
+# 主图 raw 链接改为一次性 nonce。这里先用进程内短期缓存阻止重放，
+# 避免已签发 URL 在有效期内被重复复用；后续多实例部署再切到 Redis。
+_PAGE_IMAGE_NONCE_CACHE: dict[str, int] = {}
 
 
 # ── 页面详情 ──
@@ -164,9 +171,15 @@ def get_page_image_url(
     )
     expires_at = datetime.now(UTC) + timedelta(minutes=5)
     exp = int(expires_at.timestamp())
-    sig = _sign_page_image_url(page_id=page_id, exp=exp)
+    nonce = secrets.token_urlsafe(PAGE_IMAGE_NONCE_BYTES)
+    sig = _sign_page_image_url(
+        page_id=page_id,
+        user_id=current_user.id,
+        exp=exp,
+        nonce=nonce,
+    )
     return {
-        "url": f"/api/v1/pages/{page_id}/image/raw?exp={exp}&sig={sig}",
+        "url": f"/api/v1/pages/{page_id}/image/raw?exp={exp}&nonce={nonce}&sig={sig}",
         "expires_at": expires_at.isoformat().replace("+00:00", "Z"),
     }
 
@@ -177,15 +190,34 @@ def get_page_image_url(
 def get_page_image_raw(
     page_id: str,
     db: Session = Depends(get_db_session),
+    current_user: User = Depends(get_current_user),
     exp: int = Query(..., ge=0),
+    nonce: str = Query(..., min_length=8),
     sig: str = Query(..., min_length=8),
 ):
-    if not _verify_page_image_url(page_id=page_id, exp=exp, sig=sig):
+    if not _verify_page_image_url(
+        page_id=page_id,
+        user_id=current_user.id,
+        exp=exp,
+        nonce=nonce,
+        sig=sig,
+    ):
         return _error_response(
             status_code=status.HTTP_401_UNAUTHORIZED,
             code="IMAGE_URL_EXPIRED",
             message="Image URL expired.",
             details={"page_id": page_id},
+        )
+    try:
+        page_data = get_page_detail(db=db, page_public_id=page_id)
+    except PageNotFoundError:
+        page_data = None
+    if page_data is not None:
+        ensure_project_capability(
+            db,
+            user_id=current_user.id,
+            project_id=int(page_data["project_id"]),
+            capability="can_view_project",
         )
     page = db.scalar(select(Page).where(Page.public_id == page_id))
     if not page:
@@ -581,8 +613,15 @@ def list_project_pages(
 # ── 内部工具函数 ──
 
 
-def _sign_page_image_url(*, page_id: str, exp: int) -> str:
-    message = f"{page_id}.{exp}".encode("utf-8")
+def _build_page_image_raw_path(page_id: str) -> str:
+    return f"/api/v1/pages/{page_id}/image/raw"
+
+
+def _sign_page_image_url(*, page_id: str, user_id: int, exp: int, nonce: str) -> str:
+    message = (
+        f"{PAGE_IMAGE_RAW_METHOD}.{_build_page_image_raw_path(page_id)}."
+        f"{page_id}.{user_id}.{exp}.{nonce}"
+    ).encode("utf-8")
     digest = hmac.new(
         get_jwt_secret_key().encode("utf-8"),
         message,
@@ -591,14 +630,40 @@ def _sign_page_image_url(*, page_id: str, exp: int) -> str:
     return base64.urlsafe_b64encode(digest).decode("ascii").rstrip("=")
 
 
-def _verify_page_image_url(*, page_id: str, exp: int, sig: str) -> bool:
+def _verify_page_image_url(
+    *, page_id: str, user_id: int, exp: int, nonce: str, sig: str
+) -> bool:
     now = int(datetime.now(UTC).timestamp())
     if exp <= now:
         return False
     if exp - now > 60 * 60:
         return False
-    expected = _sign_page_image_url(page_id=page_id, exp=exp)
-    return hmac.compare_digest(expected, sig)
+    expected = _sign_page_image_url(
+        page_id=page_id,
+        user_id=user_id,
+        exp=exp,
+        nonce=nonce,
+    )
+    if not hmac.compare_digest(expected, sig):
+        return False
+    return _consume_page_image_nonce(user_id=user_id, nonce=nonce, exp=exp)
+
+
+def _consume_page_image_nonce(*, user_id: int, nonce: str, exp: int) -> bool:
+    now = int(datetime.now(UTC).timestamp())
+    expired_cache_keys = [
+        cache_key
+        for cache_key, cache_exp in _PAGE_IMAGE_NONCE_CACHE.items()
+        if cache_exp <= now
+    ]
+    for cache_key in expired_cache_keys:
+        _PAGE_IMAGE_NONCE_CACHE.pop(cache_key, None)
+
+    cache_key = f"{user_id}:{nonce}"
+    if cache_key in _PAGE_IMAGE_NONCE_CACHE:
+        return False
+    _PAGE_IMAGE_NONCE_CACHE[cache_key] = exp
+    return True
 
 
 def _error_response(

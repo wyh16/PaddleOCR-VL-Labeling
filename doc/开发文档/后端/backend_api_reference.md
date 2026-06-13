@@ -109,6 +109,8 @@ Cookie: k12_access_token=...
 Authorization: Bearer <access_token>
 ```
 
+文档中的请求示例默认优先展示浏览器前端使用的 Cookie 会话；只有明确说明“非浏览器调用”或“兼容场景”时，才展示 Bearer token 示例。
+
 前端不得把 token 放入 URL query、local log、异常提示或可分享链接。当前 Cookie 会话尚未实现专用 CSRF token 或双提交校验，生产化前需要按 `backend_development_spec.md` 补齐；当前限制见第 10 章。
 
 ### 2.4 ID 语义
@@ -154,7 +156,7 @@ Authorization: Bearer <access_token>
 | `GET` | `/api/v1/pages/{page_id}` | 是 | 已实现 | 获取页面详情和图片元数据。 |
 | `DELETE` | `/api/v1/pages/{page_id}` | 是 | 临时实现 | 删除页面；当前代码存在，但尚未按后端设计文档批准为长期契约。 |
 | `GET` | `/api/v1/pages/{page_id}/image` | 是 | 已实现 | 获取页面图片短期签名访问 URL。 |
-| `GET` | `/api/v1/pages/{page_id}/image/raw?exp=&sig=` | 否 | 已实现 | 读取页面图片文件；依赖短期签名 URL。 |
+| `GET` | `/api/v1/pages/{page_id}/image/raw?exp=&nonce=&sig=` | 是 | 已实现 | 读取页面图片文件；依赖短期签名 URL 和当前登录会话。 |
 | `GET` | `/api/v1/pages/{page_id}/annotation/latest` | 是 | 已实现 | 读取页面最新标注 revision。 |
 | `POST` | `/api/v1/pages/{page_id}/annotation/revisions` | 是 | 已实现 | 创建新的整页标注 revision。 |
 | `GET` | `/api/v1/pages/{page_id}/annotation/revisions` | 是 | 已实现 | 列出页面标注版本。 |
@@ -200,15 +202,6 @@ Content-Type: application/json
     "username": "annotator",
     "display_name": "标注员"
   }
-}
-```
-
-如果页面存在但尚未产生任何标注 revision，也返回成功响应：
-
-```json
-{
-  "data": null,
-  "request_id": "req_xxx"
 }
 ```
 
@@ -317,11 +310,11 @@ GET /api/v1/health
 
 ```http
 POST /api/v1/projects/{project_id}/assets/upload
-Authorization: Bearer <access_token>
+Cookie: k12_access_token=...
 Content-Type: multipart/form-data
 ```
 
-鉴权：需要登录，并具备 `can_upload_assets`。
+鉴权：需要登录，并具备 `can_upload_assets`。浏览器前端默认使用 Cookie 会话；非浏览器调用可改为 `Authorization: Bearer <access_token>`。
 
 路径参数：
 
@@ -384,11 +377,11 @@ Form 字段：
 
 ```http
 POST /api/v1/assets/upload
-Authorization: Bearer <access_token>
+Cookie: k12_access_token=...
 Content-Type: multipart/form-data
 ```
 
-鉴权：需要登录，并具备 `can_upload_assets`。
+鉴权：需要登录，并具备 `can_upload_assets`。浏览器前端默认使用 Cookie 会话；非浏览器调用可改为 `Authorization: Bearer <access_token>`。
 
 Form 字段：
 
@@ -409,7 +402,7 @@ Form 字段：
 
 ```http
 GET /api/v1/projects
-Authorization: Bearer <access_token>
+Cookie: k12_access_token=...
 ```
 
 鉴权：需要登录。
@@ -450,7 +443,7 @@ Authorization: Bearer <access_token>
 
 ```http
 POST /api/v1/projects
-Authorization: Bearer <access_token>
+Cookie: k12_access_token=...
 Content-Type: application/json
 ```
 
@@ -478,7 +471,7 @@ Content-Type: application/json
 
 ```http
 GET /api/v1/projects/{project_id}
-Authorization: Bearer <access_token>
+Cookie: k12_access_token=...
 ```
 
 鉴权：需要登录，且当前实现仅允许项目创建者访问。
@@ -503,7 +496,7 @@ Authorization: Bearer <access_token>
 
 ```http
 PATCH /api/v1/projects/{project_id}
-Authorization: Bearer <access_token>
+Cookie: k12_access_token=...
 Content-Type: application/json
 ```
 
@@ -535,7 +528,7 @@ Content-Type: application/json
 
 ```http
 DELETE /api/v1/projects/{project_id}
-Authorization: Bearer <access_token>
+Cookie: k12_access_token=...
 ```
 
 鉴权：需要登录，且当前实现仅允许项目创建者操作。
@@ -558,7 +551,7 @@ HTTP 204 No Content
 
 ```http
 GET /api/v1/projects/{project_id}/pages
-Authorization: Bearer <access_token>
+Cookie: k12_access_token=...
 ```
 
 鉴权：需要登录，并具备 `can_view_project`。
@@ -596,7 +589,7 @@ Authorization: Bearer <access_token>
 
 ```http
 GET /api/v1/projects/{project_id}/me/capabilities
-Authorization: Bearer <access_token>
+Cookie: k12_access_token=...
 ```
 
 鉴权：需要登录。
@@ -720,7 +713,7 @@ GET /api/v1/projects/{project_id}/labels
 
 ```http
 GET /api/v1/pages/{page_id}
-Authorization: Bearer <access_token>
+Cookie: k12_access_token=...
 ```
 
 鉴权：需要登录，并具备 `can_view_project`。
@@ -782,7 +775,7 @@ Authorization: Bearer <access_token>
 
 ```http
 DELETE /api/v1/pages/{page_id}
-Authorization: Bearer <access_token>
+Cookie: k12_access_token=...
 ```
 
 鉴权：需要登录，并具备 `can_manage_project_members`。
@@ -823,7 +816,7 @@ HTTP 204 No Content
 
 ```http
 GET /api/v1/pages/{page_id}/image
-Authorization: Bearer <access_token>
+Cookie: k12_access_token=...
 ```
 
 鉴权：需要登录，并具备 `can_view_project`。
@@ -838,7 +831,7 @@ Authorization: Bearer <access_token>
 
 ```json
 {
-  "url": "/api/v1/pages/page_xxx/image/raw?exp=1760000000&sig=base64url_hmac",
+  "url": "/api/v1/pages/page_xxx/image/raw?exp=1760000000&nonce=nonce_xxx&sig=base64url_hmac",
   "expires_at": "2026-06-09T12:00:00Z"
 }
 ```
@@ -847,15 +840,15 @@ Authorization: Bearer <access_token>
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
-| `url` | string | 页面图片短期签名访问 URL。当前使用 `page_id + exp` 的 HMAC-SHA256 签名。 |
+| `url` | string | 页面图片短期签名访问 URL。当前签名绑定 `method + path + page_id + user_id + exp + nonce`。 |
 | `expires_at` | string | 签名 URL 的 UTC 过期时间。当前默认签发后 5 分钟过期。 |
 
 行为约束：
 
 ```text
 1. 只有通过 /image 接口且具备 can_view_project 的用户才能获得签名 URL。
-2. raw URL 自带 exp 和 sig；服务端会校验签名是否匹配、是否过期。
-3. 当前签名 URL 不绑定用户会话，拿到 URL 的客户端可在过期前重复访问。
+2. raw URL 自带 exp、nonce 和 sig；服务端会校验签名是否匹配、是否过期、nonce 是否重复，以及当前用户是否仍具备 can_view_project。
+3. 当前 nonce 使用进程内短期缓存防重放；后续多实例部署时需要切到共享缓存。
 ```
 
 错误：
@@ -869,10 +862,11 @@ Authorization: Bearer <access_token>
 ### 8.4 读取页面图片文件
 
 ```http
-GET /api/v1/pages/{page_id}/image/raw?exp=1760000000&sig=base64url_hmac
+GET /api/v1/pages/{page_id}/image/raw?exp=1760000000&nonce=nonce_xxx&sig=base64url_hmac
+Cookie: k12_access_token=...
 ```
 
-鉴权：不要求 Bearer token；依赖 `/image` 下发的短期签名 URL。
+鉴权：需要已登录会话，并依赖 `/image` 下发的短期签名 URL。
 
 路径参数：
 
@@ -885,7 +879,8 @@ GET /api/v1/pages/{page_id}/image/raw?exp=1760000000&sig=base64url_hmac
 | 参数 | 类型 | 必填 | 说明 |
 |---|---|---|---|
 | `exp` | integer | 是 | UTC 秒级过期时间戳。 |
-| `sig` | string | 是 | 基于 `page_id + exp` 计算的 HMAC-SHA256 签名。 |
+| `nonce` | string | 是 | 一次性随机串，用于防重放。 |
+| `sig` | string | 是 | 基于 `method + path + page_id + user_id + exp + nonce` 计算的 HMAC-SHA256 签名。 |
 
 成功响应：
 
@@ -897,14 +892,15 @@ GET /api/v1/pages/{page_id}/image/raw?exp=1760000000&sig=base64url_hmac
 
 | HTTP 状态码 | 场景 |
 |---|---|
-| `401` | `exp` 已过期、超出允许窗口或 `sig` 校验失败。 |
+| `401` | 未登录，或 `exp` 已过期、超出允许窗口、`nonce` 已被使用、`sig` 校验失败。 |
+| `403` | 当前用户缺少 `can_view_project`。 |
 | `404` | 页面不存在、页面未绑定图片、资产不存在或磁盘文件缺失。 |
 
 ### 8.5 读取页面最新标注版本
 
 ```http
 GET /api/v1/pages/{page_id}/annotation/latest
-Authorization: Bearer <access_token>
+Cookie: k12_access_token=...
 ```
 
 鉴权：需要登录，并具备 `can_view_project`。
@@ -939,6 +935,15 @@ Authorization: Bearer <access_token>
 }
 ```
 
+如果页面存在但尚未产生任何标注 revision，也返回成功响应：
+
+```json
+{
+  "data": null,
+  "request_id": "req_xxx"
+}
+```
+
 响应字段：
 
 | 字段 | 类型 | 说明 |
@@ -966,7 +971,7 @@ Authorization: Bearer <access_token>
 
 ```http
 POST /api/v1/pages/{page_id}/annotation/revisions
-Authorization: Bearer <access_token>
+Cookie: k12_access_token=...
 Content-Type: application/json
 ```
 
@@ -1089,7 +1094,7 @@ Content-Type: application/json
 
 ```http
 GET /api/v1/pages/{page_id}/annotation/revisions?limit=50&offset=0
-Authorization: Bearer <access_token>
+Cookie: k12_access_token=...
 ```
 
 鉴权：需要登录，并具备 `can_view_project`。
@@ -1132,7 +1137,7 @@ Authorization: Bearer <access_token>
 
 ```http
 GET /api/v1/pages/{page_id}/annotation/revisions/{revision_id}
-Authorization: Bearer <access_token>
+Cookie: k12_access_token=...
 ```
 
 鉴权：需要登录，并具备 `can_view_project`。
@@ -1152,7 +1157,7 @@ Authorization: Bearer <access_token>
 
 ```http
 GET /api/v1/pages/{page_id}/qc
-Authorization: Bearer <access_token>
+Cookie: k12_access_token=...
 ```
 
 鉴权：需要登录，并具备 `can_view_project`。
@@ -1255,7 +1260,7 @@ M4 页面与标注 revision 接口当前使用的业务错误 code：
 4. 当前标注 JSON 已要求 k12_annotations 字段存在；relations 仍允许缺失并按空数组处理。
 5. 当前没有 revision submit、lock、rollback、review、qc run 等流转接口。
 6. 当前页面图片访问已提供短期签名 URL；签名默认 5 分钟有效，raw 端点要求 exp 和 sig 校验通过。
-7. 当前页面图片签名 URL 未绑定 user_id、session 或 nonce，拿到 URL 的客户端可在过期前重复访问；生产化前需要按 Signed URL 规范补齐重放防护。
+7. 当前页面图片签名 URL 已绑定 user_id 和 nonce，并在 raw 端点校验当前用户权限与 nonce 防重放；但 nonce 目前使用进程内缓存，后续多实例部署时需要切到共享缓存。
 8. 当前 Cookie 会话尚未实现专用 CSRF token 或双提交校验；生产部署前必须补齐 CSRF 防护，或保持同源 SameSite 策略并在安全文档中明确边界。
 9. 当前项目、标签、capabilities、revision 列表和 QC 列表等接口尚未统一 `{data, request_id}` 响应包装，前端需要逐接口适配，后续应按 backend_development_spec.md 收敛。
 10. `DELETE /pages/{page_id}` 是临时实现，尚未按后端设计文档批准；当前为物理删除且复用 `can_manage_project_members`，后续应移除或补齐软删除、审计和专用 capability。

@@ -48,6 +48,7 @@ defineExpose({ store, renderer, redraw })
 // ── DOM 引用 ──
 const canvasRef = ref<HTMLCanvasElement | null>(null)
 const imageLoaded = ref(false)
+const imageLoadFailed = ref(false)
 
 // ── 鼠标交互状态 ──
 const isDragging = ref(false)
@@ -126,10 +127,26 @@ function redraw() {
   renderer.render(canvasRef.value)
 }
 
+function clearCanvasState(loadFailed = false) {
+  imageLoaded.value = false
+  imageLoadFailed.value = loadFailed
+  renderer.clearImage()
+
+  const canvas = canvasRef.value
+  if (!canvas) return
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return
+  ctx.clearRect(0, 0, canvas.width, canvas.height)
+}
+
 // ── 图片加载 ──
 watch(() => props.imageUrl, async (url) => {
-  if (!url) return
+  if (!url) {
+    clearCanvasState(true)
+    return
+  }
   imageLoaded.value = false
+  imageLoadFailed.value = false
 
   try {
     await renderer.loadImage(url)
@@ -143,7 +160,7 @@ watch(() => props.imageUrl, async (url) => {
       emit('update:zoomLevel', renderer.zoomPercent.value)
     }
   } catch {
-    console.error('图片加载失败')
+    clearCanvasState(true)
   }
 }, { immediate: true })
 
@@ -416,8 +433,13 @@ const cursorClass = computed(() => {
   <div
     :class="['relative w-full h-full overflow-hidden bg-bg-canvas select-none flex items-center justify-center', cursorClass]"
     @wheel.prevent="onWheel">
+    <!-- 图片加载失败 -->
+    <div v-if="imageLoadFailed" class="absolute inset-0 flex items-center justify-center text-text-muted">
+      <span class="text-caption">图片加载失败</span>
+    </div>
+
     <!-- 加载中 -->
-    <div v-if="!imageLoaded" class="absolute inset-0 flex items-center justify-center text-text-muted">
+    <div v-else-if="!imageLoaded" class="absolute inset-0 flex items-center justify-center text-text-muted">
       <div class="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
     </div>
 

@@ -19,6 +19,7 @@ import AnnotationCanvas from '@/components/annotation/AnnotationCanvas.vue'
 import { getDefaultColor, type AnnotationObject } from '@/composables/useAnnotationStore'
 import { SAVE_STATUS_KEY, UPDATE_SAVE_STATUS_KEY, computeCanWriteAnnotation, type SaveStatus } from './workspaceGuards'
 import { revokeObjectUrl, syncThumbnailObjectUrls } from './workspaceImageUrls'
+import { formatWorkspaceImageError } from './workspaceImageError'
 import { getQcIssueSuggestion, getQcIssueTarget, getQcOverlayRegions, groupQcIssues } from './workspaceQc'
 import {
   MousePointer2,
@@ -83,6 +84,7 @@ const labels = ref<ProjectLabel[]>([])
 const qcIssues = ref<QcIssue[]>([])
 const activeQcIssueId = ref<string | null>(null)
 const imageUrl = ref<string | null>(null)
+const imageError = ref('')
 
 // ── 页面列表（同项目） ──
 const pageList = ref<Page[]>([])
@@ -548,13 +550,8 @@ function hydrateStoreFromLoadedData(targetPage: Page, targetRevision: Annotation
   objectCount.value = canvasRef.value.store.objects.value.length
 }
 
-async function loadImageUrl(targetPageId: string): Promise<string | null> {
-  try {
-    const url = await pagesApi.fetchImageBlob(targetPageId)
-    return url
-  } catch {
-    return null
-  }
+async function loadImageUrl(targetPageId: string): Promise<string> {
+  return pagesApi.fetchImageBlob(targetPageId)
 }
 
 // ── 键盘快捷键 ──
@@ -618,6 +615,7 @@ const isInitialLoad = ref(true)
 async function loadWorkspace() {
   error.value = ''
   errorCode.value = undefined
+  imageError.value = ''
 
   // 仅首次加载显示全屏 spinner，页面切换时保留旧内容避免闪烁
   if (isInitialLoad.value) {
@@ -662,7 +660,12 @@ async function loadWorkspace() {
     // 加载同项目页面列表（不阻塞主流程）
     loadPageList(String(page.value.project_id))
 
-    const nextImageUrl = await loadImageUrl(page.value.page_id)
+    let nextImageUrl: string | null = null
+    try {
+      nextImageUrl = await loadImageUrl(page.value.page_id)
+    } catch (e) {
+      imageError.value = formatWorkspaceImageError(t, e)
+    }
     if (nextImageUrl !== imageUrl.value) {
       revokeObjectUrl(imageUrl.value)
       imageUrl.value = nextImageUrl
@@ -762,6 +765,9 @@ onUnmounted(() => {
             </button>
           </div>
         </div>
+      </div>
+      <div v-if="imageError" class="border-b border-border bg-warning-bg px-3 py-2 text-caption text-warning">
+        {{ imageError }}
       </div>
       <!-- ═══ 工具栏 ═══ -->
       <div class="h-12 bg-surface border-b border-border flex items-center px-3 shrink-0 gap-1 z-toolbar">
