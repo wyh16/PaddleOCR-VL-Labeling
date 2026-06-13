@@ -195,6 +195,7 @@ function getLabelText(type: string, namespace = 'k12') {
 
 // ── 选中对象属性 ──
 const selectedObject = ref<AnnotationObject | null>(null)
+const readOrderInputError = ref('')
 
 function onObjectSelected(id: string | null) {
   if (!id) {
@@ -233,17 +234,38 @@ function onLabelChange(e: Event) {
 
 function onReadOrderChange(e: Event) {
   if (!canWriteAnnotation.value) return
-  const order = parseInt((e.target as HTMLInputElement).value, 10)
-  if (selectedObject.value && canvasRef.value && !isNaN(order)) {
-    canvasRef.value.store.setReadOrder(selectedObject.value.id, order)
-    onObjectsChanged()
+  const input = e.target as HTMLInputElement
+  const rawValue = input.value.trim()
+  if (!selectedObject.value || !canvasRef.value) return
+
+  const order = parseInt(rawValue, 10)
+  if (rawValue === '' || !/^\d+$/.test(rawValue) || isNaN(order) || order <= 0) {
+    readOrderInputError.value = t('annotation.properties.readOrderPositiveInteger')
+    input.value = selectedObject.value.read_order != null ? String(selectedObject.value.read_order) : ''
+    return
   }
+
+  const duplicated = canvasRef.value.store.objects.value.some(
+    obj => obj.id !== selectedObject.value?.id && obj.read_order === order,
+  )
+  if (duplicated) {
+    readOrderInputError.value = t('annotation.properties.readOrderDuplicate')
+    input.value = selectedObject.value.read_order != null ? String(selectedObject.value.read_order) : ''
+    return
+  }
+
+  readOrderInputError.value = ''
+  canvasRef.value.store.setReadOrder(selectedObject.value.id, order)
+  onObjectsChanged()
 }
 
 function clearReadOrder() {
   if (!canWriteAnnotation.value) return
-  canvasRef.value?.store.clearReadOrder()
-  onObjectsChanged()
+  const changed = canvasRef.value?.store.clearReadOrder()
+  readOrderInputError.value = ''
+  if (changed) {
+    onObjectsChanged()
+  }
 }
 
 function focusImageRegion(bbox: [number, number, number, number]) {
@@ -321,7 +343,6 @@ async function saveAnnotation() {
   syncWorkspaceMeta('manual_saving')
   try {
     const draft = canvasRef.value.store.toDraft(page.value.page_id)
-    console.log('[DEBUG] 保存标注:', { pageId: page.value.page_id, base_revision_id: draft.base_revision_id, draft })
     conflictDraft.value = null
     const result = await saveApi.save(page.value.page_id, draft)
     canvasRef.value.store.baseRevisionId.value = result.id
@@ -599,7 +620,11 @@ watch([activeTool, canWriteAnnotation, canvasRef], ([tool, canWrite]) => {
   if (!store) return
 
   if (tool === 'read_order' && canWrite) {
-    store.startReadOrderSession()
+    const changed = store.startReadOrderSession()
+    readOrderInputError.value = ''
+    if (changed) {
+      onObjectsChanged()
+    }
     return
   }
 
@@ -978,6 +1003,7 @@ onUnmounted(() => {
                 <input type="number" :value="selectedObject.read_order" min="0"
                   class="w-full h-7 px-2 text-caption bg-surface border border-border rounded-md text-text focus:outline-none focus:ring-2 focus:ring-focus"
                   @change="onReadOrderChange" />
+                <p v-if="readOrderInputError" class="mt-1 text-micro text-danger">{{ readOrderInputError }}</p>
               </div>
 
               <!-- 坐标 -->

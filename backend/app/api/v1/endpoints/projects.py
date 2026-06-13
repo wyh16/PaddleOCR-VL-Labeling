@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
-from sqlalchemy import select
+from sqlalchemy import case, select
 from sqlalchemy.orm import Session
 
 from app.core.security import (
@@ -273,6 +273,7 @@ def list_project_labels(
         .order_by(
             LabelRegistry.namespace.asc(),
             LabelRegistry.name.asc(),
+            case((LabelRegistry.project_id.is_(None), 0), else_=1).asc(),
             LabelRegistry.project_id.asc(),
         )
     ).all()

@@ -87,3 +87,54 @@ def test_list_project_labels_returns_database_labels(monkeypatch: pytest.MonkeyP
     assert result.items[0].geometry_types == ["bbox_xyxy", "quad"]
     assert result.items[0].attributes_schema == {"required": ["difficulty"]}
     assert result.items[0].default_color == "#123456"
+
+
+def test_list_project_labels_prefers_project_label_over_global_label(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project = type("Project", (), {"created_by": 999})()
+    global_label = type(
+        "LabelRow",
+        (),
+        {
+            "id": 10,
+            "project_id": None,
+            "namespace": "k12",
+            "name": "question_block",
+            "display_name": "Global Question",
+            "geometry_types_json": ["bbox_xyxy"],
+            "attributes_schema_json": {},
+            "default_color": "#111111",
+            "is_builtin": True,
+            "is_active": True,
+        },
+    )()
+    project_label = type(
+        "LabelRow",
+        (),
+        {
+            "id": 11,
+            "project_id": 1,
+            "namespace": "k12",
+            "name": "question_block",
+            "display_name": "Project Question",
+            "geometry_types_json": ["bbox_xyxy", "quad"],
+            "attributes_schema_json": {"required": ["difficulty"]},
+            "default_color": "#222222",
+            "is_builtin": False,
+            "is_active": True,
+        },
+    )()
+    db = DummyDb(project=project, labels=[global_label, project_label])
+    current_user = type("User", (), {"id": 2, "is_system_admin": False})()
+
+    monkeypatch.setattr(projects_endpoint, "ensure_project_capability", lambda *_args, **_kwargs: None)
+
+    result = projects_endpoint.list_project_labels(project_id=1, db=db, current_user=current_user)
+
+    assert result.total == 1
+    assert result.items[0].id == 11
+    assert result.items[0].display_name == "Project Question"
+    assert result.items[0].geometry_types == ["bbox_xyxy", "quad"]
+    assert result.items[0].attributes_schema == {"required": ["difficulty"]}
+    assert result.items[0].default_color == "#222222"

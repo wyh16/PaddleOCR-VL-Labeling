@@ -118,6 +118,28 @@ describe('useAnnotationStore', () => {
     expect(store.objects.value[0].geometry.bbox_xyxy).toEqual([0, 0, 200, 120])
   })
 
+  it('resizeObject 在右下边界退化时向内收缩，避免生成越界坐标', () => {
+    const store = useAnnotationStore()
+    store.setImageBounds(200, 120)
+
+    const created = store.addObject([10, 20, 60, 80], {
+      name: 'question_block',
+      namespace: 'k12',
+    })
+
+    store.resizeObject(created.id, 3, 280, 80)
+    expect(store.objects.value[0].geometry.bbox_xyxy).toEqual([10, 20, 200, 80])
+
+    store.resizeObject(created.id, 6, 250, 20)
+    expect(store.objects.value[0].geometry.bbox_xyxy).toEqual([199, 20, 200, 80])
+
+    store.resizeObject(created.id, 3, 200, 180)
+    expect(store.objects.value[0].geometry.bbox_xyxy).toEqual([199, 20, 200, 120])
+
+    store.resizeObject(created.id, 7, 199, 150)
+    expect(store.objects.value[0].geometry.bbox_xyxy).toEqual([199, 119, 200, 120])
+  })
+
   it('read_order session 会清空旧排序并按点击顺序写入 1..N', () => {
     const store = useAnnotationStore()
     store.setImageBounds(300, 200)
@@ -152,6 +174,23 @@ describe('useAnnotationStore', () => {
 
     store.endReadOrderSession()
     expect(store.readOrderSession.value).toEqual({ active: false, counter: 0 })
+  })
+
+  it('startReadOrderSession 返回是否清空了旧排序', () => {
+    const store = useAnnotationStore()
+    store.setImageBounds(300, 200)
+
+    const first = store.addObject([10, 10, 60, 60], {
+      name: 'question_block',
+      namespace: 'k12',
+    })
+
+    expect(store.startReadOrderSession()).toBe(false)
+    store.endReadOrderSession()
+
+    store.setReadOrder(first.id, 3)
+    expect(store.startReadOrderSession()).toBe(true)
+    expect(store.objects.value[0].read_order).toBeUndefined()
   })
 
   it('updateObject 支持同步更新 label_namespace', () => {

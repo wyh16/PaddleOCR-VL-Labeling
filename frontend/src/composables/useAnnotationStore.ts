@@ -142,9 +142,23 @@ function clampBboxToBounds(
   ]
 
   // clamp 后可能退化（如全部 clamp 到同一边界），确保严格不等
-  if (xmin >= xmax) xmax = Math.min(xmin + 1, maxX)
-  if (ymin >= ymax) ymax = Math.min(ymin + 1, maxY)
-  // 极端情况：maxX=0 时 xmin=xmax=0，expand 到 1
+  if (xmin >= xmax) {
+    if (maxX >= 1 && xmin >= maxX) {
+      xmin = maxX - 1
+      xmax = maxX
+    } else {
+      xmax = Math.min(xmin + 1, maxX)
+    }
+  }
+  if (ymin >= ymax) {
+    if (maxY >= 1 && ymin >= maxY) {
+      ymin = maxY - 1
+      ymax = maxY
+    } else {
+      ymax = Math.min(ymin + 1, maxY)
+    }
+  }
+  // 极端情况：边界尺寸为 0 时退回到最小 1px，避免前端生成非法退化框。
   if (xmin >= xmax) xmax = xmin + 1
   if (ymin >= ymax) ymax = ymin + 1
 
@@ -319,7 +333,7 @@ export function useAnnotationStore() {
     if (obj) obj.read_order = order
   }
 
-  function clearReadOrder() {
+  function clearReadOrder(): boolean {
     const hasReadOrder = objects.value.some(obj => (obj.read_order ?? 0) > 0)
     if (hasReadOrder) {
       saveSnapshot()
@@ -328,15 +342,17 @@ export function useAnnotationStore() {
       }
     }
     readOrderSession.value.counter = 0
+    return hasReadOrder
   }
 
-  function startReadOrderSession() {
-    if (readOrderSession.value.active) return
-    clearReadOrder()
+  function startReadOrderSession(): boolean {
+    if (readOrderSession.value.active) return false
+    const changed = clearReadOrder()
     readOrderSession.value = {
       active: true,
       counter: 0,
     }
+    return changed
   }
 
   function assignNextReadOrder(id: string): number | null {

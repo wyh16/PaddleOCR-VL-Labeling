@@ -130,6 +130,8 @@ export default {
       label: 'Label',
       readOrder: 'Read Order',
       clearReadOrder: 'Clear Order',
+      readOrderPositiveInteger: 'Read order must be a positive integer',
+      readOrderDuplicate: 'Read order must be unique',
       textContent: 'Text Content',
       coordinates: 'Coordinates (x1, y1, x2, y2)',
       id: 'ID',

@@ -472,16 +472,11 @@ def _ensure_base_revision_matches_latest(
     latest_revision: Any | None,
     base_revision_id: str | None,
 ) -> None:
-    import logging
-    logger = logging.getLogger(__name__)
-    logger.warning(f"[DEBUG] _ensure_base_revision_matches_latest: latest_revision={latest_revision}, base_revision_id={base_revision_id}")
-
     if latest_revision is None:
         if base_revision_id is not None:
             raise RevisionConflictError("页面当前没有 revision，不能基于历史版本保存。")
         return
     latest_public_id = getattr(latest_revision, "public_id", None)
-    logger.warning(f"[DEBUG] latest_public_id={latest_public_id}, base_revision_id={base_revision_id}, match={base_revision_id == latest_public_id}")
     if base_revision_id is None:
         raise RevisionConflictError("保存已有标注页时必须提交 base_revision_id。")
     if base_revision_id != latest_public_id:

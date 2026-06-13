@@ -130,6 +130,8 @@ export default {
       label: '标签',
       readOrder: '阅读顺序',
       clearReadOrder: '清空排序',
+      readOrderPositiveInteger: '阅读顺序必须是正整数',
+      readOrderDuplicate: '阅读顺序不能重复',
       textContent: '文本内容',
       coordinates: '坐标 (x1, y1, x2, y2)',
       id: 'ID',
