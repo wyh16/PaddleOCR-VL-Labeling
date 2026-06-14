@@ -146,7 +146,7 @@ Authorization: Bearer <access_token>
 | `POST` | `/api/v1/projects` | 是 | 已实现 | 创建项目。 |
 | `GET` | `/api/v1/projects/{project_id}` | 是 | 已实现 | 获取项目详情；仅创建者可访问。 |
 | `PATCH` | `/api/v1/projects/{project_id}` | 是 | 已实现 | 更新项目；仅创建者可操作。 |
-| `DELETE` | `/api/v1/projects/{project_id}` | 是 | 已实现 | 删除项目；仅创建者可操作。 |
+| `DELETE` | `/api/v1/projects/{project_id}` | 是 | 临时实现 | 删除项目；仅创建者可操作，不建议新前端依赖。 |
 | `POST` | `/api/v1/projects/{project_id}/assets/upload` | 是 | 已实现 | 标准项目级图片上传入口。 |
 | `GET` | `/api/v1/projects/{project_id}/pages` | 是 | 已实现 | 获取项目页面列表。 |
 | `GET` | `/api/v1/projects/{project_id}/me/capabilities` | 是 | 已实现 | 获取当前用户在项目中的 capability 映射。 |
@@ -531,6 +531,23 @@ Cookie: k12_access_token=...
 
 鉴权：需要登录，且当前实现仅允许项目创建者操作。
 
+契约状态：
+
+```text
+1. 该接口是当前代码事实，记录在本文便于联调识别。
+2. 后端设计文档尚未批准项目删除 API 作为长期产品契约。
+3. 当前实现仍为物理删除，不符合后端开发规范中“删除数据默认软删除”的长期要求。
+4. 当前没有项目删除审计日志；新前端不应依赖该接口作为正式产品能力。
+```
+
+当前行为：
+
+```text
+1. 先按 project_id 读取项目。
+2. 仅允许项目创建者删除。
+3. 如果项目仍有关联数据导致数据库删除失败，返回 409。
+```
+
 成功响应：
 
 ```text
@@ -544,6 +561,7 @@ HTTP 204 No Content
 | `401` | 未登录或认证失效。 |
 | `403` | 当前用户不是项目创建者。 |
 | `404` | 项目不存在。 |
+| `409` | 项目存在关联数据，无法删除。 |
 
 ### 7.6 获取项目页面列表
 
@@ -1222,6 +1240,7 @@ M4 页面与标注 revision 接口当前使用的业务错误 code：
 9. 当前项目、标签、capabilities、revision 列表和 QC 列表等接口尚未统一 `{data, request_id}` 响应包装，前端需要逐接口适配，后续应按 backend_development_spec.md 收敛。
 10. 当前认证、权限和 Pydantic 请求校验错误尚未统一包装 request_id；M4 页面与标注 revision 的业务错误已统一。
 11. 当前接口文档不替代自动生成的 OpenAPI；字段变化时两者都需要核对。
+12. 当前 `DELETE /projects/{project_id}` 仅是临时实现；虽然已补 409 关联数据保护，但仍是物理删除，且未补软删除和审计日志，新前端不应依赖。
 ```
 
 ---

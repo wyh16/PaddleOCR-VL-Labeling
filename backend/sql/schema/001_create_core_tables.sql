@@ -2,6 +2,9 @@
 \encoding UTF8
 
 -- M2 core schema draft.
+-- 本文件仅用于全新数据库初始化或人工审阅。
+-- 不要把它当作已有数据库可重复执行的幂等升级脚本。
+-- 现有数据的升级、回填和回滚必须以 Alembic migration 为准。
 -- Internal primary keys use BIGINT identity for index locality.
 -- Internal foreign keys use <entity>_id.
 -- Public stable ids use public_id. API route names may still use resource names

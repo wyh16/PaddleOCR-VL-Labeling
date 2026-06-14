@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import case, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.security import (
@@ -223,8 +224,15 @@ def delete_project(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Access denied"
         )
-    db.delete(project)
-    db.commit()
+    try:
+        db.delete(project)
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Project has related data and cannot be deleted.",
+        ) from None
 
 
 @router.get(
