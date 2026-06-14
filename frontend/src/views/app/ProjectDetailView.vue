@@ -8,6 +8,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { pagesApi, type Page, type Capabilities } from '@/api/pages'
 import { assetsApi } from '@/api/assets'
+import { BaseButton, BaseEmptyState } from '@/components/base'
 import { formatProjectDetailError } from './projectDetailErrors'
 import { FileCheck, AlertCircle, Loader2, FileImage, PenTool, X, RotateCcw, Upload } from 'lucide-vue-next'
 
@@ -292,17 +293,14 @@ async function deletePage(pageId: string, e: Event) {
               ${t('upload.selectFiles')}` }}
             </span>
             <div class="flex gap-2">
-              <button type="button"
-                class="inline-flex items-center justify-center rounded-md border border-border bg-surface px-3 py-1.5 text-caption font-medium text-text transition-colors hover:bg-surface-muted disabled:cursor-not-allowed disabled:opacity-50"
+              <BaseButton type="button" variant="secondary" size="sm"
                 :disabled="!uploadItems.some(i => i.status === 'done' || i.status === 'cancelled')"
                 @click="clearCompleted">
                 {{ t('common.close') }}
-              </button>
-              <button v-if="pendingCount > 0" type="button"
-                class="inline-flex items-center justify-center rounded-md bg-primary px-3 py-1.5 text-caption font-medium text-white transition-colors hover:bg-primary-hover"
-                @click="startUpload">
+              </BaseButton>
+              <BaseButton v-if="pendingCount > 0" type="button" variant="primary" size="sm" @click="startUpload">
                 {{ t('upload.startUpload') }}
-              </button>
+              </BaseButton>
             </div>
           </div>
 
@@ -383,10 +381,8 @@ async function deletePage(pageId: string, e: Event) {
             <div v-for="i in 3" :key="i" class="h-16 bg-surface-alt rounded-lg animate-pulse"></div>
           </div>
 
-          <div v-else-if="pages.length === 0"
-            class="rounded-lg border border-dashed border-border bg-surface px-6 py-12 text-center text-text-muted">
-            {{ t('upload.selectFiles') }}
-          </div>
+          <BaseEmptyState v-else-if="pages.length === 0" :title="t('common.noData')"
+            :description="t('upload.selectFiles')" />
 
           <div v-else class="space-y-2">
             <div v-for="page in pages" :key="page.page_id"
@@ -399,11 +395,9 @@ async function deletePage(pageId: string, e: Event) {
                   {{ page.width }}×{{ page.height }} · {{ getPageStatusText(page.status) }}
                 </p>
               </div>
-              <button type="button"
-                class="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-3 py-1.5 text-caption font-medium text-text transition-colors hover:bg-surface-muted">
-                <PenTool class="w-3.5 h-3.5" />
+              <BaseButton type="button" variant="secondary" size="sm" :left-icon="PenTool">
                 {{ t('common.edit') }}
-              </button>
+              </BaseButton>
               <button v-if="canDeletePages" type="button"
                 class="inline-flex items-center justify-center rounded-md p-2 text-danger transition-colors hover:bg-danger-bg"
                 :loading="deletingId === page.page_id" @click="deletePage(page.page_id, $event)">
@@ -416,14 +410,11 @@ async function deletePage(pageId: string, e: Event) {
       </section>
 
       <template v-else-if="activeTab === 'jobs' || activeTab === 'exports' || activeTab === 'qc'">
-        <div class="text-center py-8 text-gray-400">
-          {{ t('common.featureNotAvailable') }}
-        </div>
+        <BaseEmptyState :title="t('common.featureNotAvailable')" />
       </template>
 
-      <section v-else
-        class="rounded-lg border border-dashed border-border bg-surface px-6 py-12 text-center text-text-muted">
-        {{ t('common.noData') }}
+      <section v-else>
+        <BaseEmptyState :title="t('common.noData')" />
       </section>
     </div>
   </div>

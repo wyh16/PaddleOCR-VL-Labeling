@@ -16,6 +16,7 @@ import { qcApi, type QcIssue } from '@/api/qc'
 import { annotationsApi as saveApi } from '@/api/annotations'
 import { ApiClientError } from '@/api/client'
 import AnnotationCanvas from '@/components/annotation/AnnotationCanvas.vue'
+import { BaseButton, BaseErrorState, BaseInput } from '@/components/base'
 import { getDefaultColor, type AnnotationObject } from '@/composables/useAnnotationStore'
 import { SAVE_STATUS_KEY, UPDATE_SAVE_STATUS_KEY, computeCanWriteAnnotation, type SaveStatus } from './workspaceGuards'
 import { revokeObjectUrl, syncThumbnailObjectUrls } from './workspaceImageUrls'
@@ -750,17 +751,8 @@ onUnmounted(() => {
     </div>
 
     <!-- Error -->
-    <div v-else-if="error" class="flex-1 flex items-center justify-center">
-      <div class="text-center">
-        <p class="text-heading text-text mb-2">{{ error }}</p>
-        <p v-if="errorCode" class="text-caption text-text-muted mb-4">{{ errorCode }}</p>
-        <button type="button"
-          class="inline-flex items-center justify-center rounded-md bg-primary px-3 py-2 text-caption font-medium text-white transition-colors hover:bg-primary-hover"
-          @click="loadWorkspace">
-          {{ t('common.retry') }}
-        </button>
-      </div>
-    </div>
+    <BaseErrorState v-else-if="error" :title="error" :detail="errorCode ? String(errorCode) : ''"
+      :retry-label="t('common.retry')" :can-retry="true" @retry="loadWorkspace" />
 
     <!-- Workspace -->
     <template v-else-if="page">
@@ -768,26 +760,20 @@ onUnmounted(() => {
         <div class="flex items-center justify-between gap-3">
           <div class="truncate">{{ t('errors.conflict') }}</div>
           <div class="flex items-center gap-2 shrink-0">
-            <button type="button"
-              class="inline-flex items-center justify-center rounded-md bg-primary px-2.5 py-1.5 text-micro font-medium text-white transition-colors hover:bg-primary-hover disabled:opacity-40 disabled:cursor-not-allowed"
-              :disabled="saving" @click="saveAsNewRevisionFromConflict">
+            <BaseButton type="button" variant="primary" size="xs" :disabled="saving"
+              @click="saveAsNewRevisionFromConflict">
               {{ t('workspace.conflictSaveAsNew') }}
-            </button>
-            <button type="button"
-              class="inline-flex items-center justify-center rounded-md bg-surface px-2.5 py-1.5 text-micro font-medium text-text-secondary border border-border transition-colors hover:bg-surface-muted disabled:opacity-40 disabled:cursor-not-allowed"
-              :disabled="saving" @click="rebaseConflictAndContinueEditing">
+            </BaseButton>
+            <BaseButton type="button" variant="secondary" size="xs" :disabled="saving"
+              @click="rebaseConflictAndContinueEditing">
               {{ t('workspace.conflictRebase') }}
-            </button>
-            <button type="button"
-              class="inline-flex items-center justify-center rounded-md bg-surface px-2.5 py-1.5 text-micro font-medium text-text-secondary border border-border transition-colors hover:bg-surface-muted"
-              @click="exportConflictDraftJson">
+            </BaseButton>
+            <BaseButton type="button" variant="secondary" size="xs" @click="exportConflictDraftJson">
               {{ t('workspace.conflictExport') }}
-            </button>
-            <button type="button"
-              class="inline-flex items-center justify-center rounded-md bg-danger px-2.5 py-1.5 text-micro font-medium text-white transition-colors hover:opacity-90"
-              @click="discardLocalChangesAndReloadLatest">
+            </BaseButton>
+            <BaseButton type="button" variant="danger" size="xs" @click="discardLocalChangesAndReloadLatest">
               {{ t('workspace.conflictDiscard') }}
-            </button>
+            </BaseButton>
           </div>
         </div>
       </div>
@@ -1000,9 +986,8 @@ onUnmounted(() => {
               <div class="mb-2">
                 <label class="text-micro text-text-tertiary block mb-1">{{ t('annotation.properties.readOrder')
                 }}</label>
-                <input type="number" :value="selectedObject.read_order" min="0"
-                  class="w-full h-7 px-2 text-caption bg-surface border border-border rounded-md text-text focus:outline-none focus:ring-2 focus:ring-focus"
-                  @change="onReadOrderChange" />
+                <BaseInput type="number" :model-value="selectedObject.read_order ?? ''" min="0" size="sm"
+                  :invalid="Boolean(readOrderInputError)" @change="onReadOrderChange" />
                 <p v-if="readOrderInputError" class="mt-1 text-micro text-danger">{{ readOrderInputError }}</p>
               </div>
 
@@ -1021,7 +1006,7 @@ onUnmounted(() => {
               <!-- ID -->
               <div class="flex justify-between text-micro text-text-tertiary">
                 <span>{{ t('annotation.properties.id') }}: <span class="font-mono">{{ selectedObject.id.slice(0, 12)
-                    }}</span></span>
+                }}</span></span>
               </div>
             </template>
 
