@@ -8,10 +8,9 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Body, Depends, Query, Response, status
+from fastapi import APIRouter, Body, Depends, Query, status
 from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -92,55 +91,6 @@ def read_page(
         capability="can_view_project",
     )
     return PageReadResponse(data=_page_data(page), request_id=new_public_id("req"))
-
-
-@router.delete(
-    "/pages/{page_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
-    response_model=None,
-    response_class=Response,
-    summary="删除页面",
-)
-def delete_page(
-    page_id: str,
-    db: Session = Depends(get_db_session),
-    current_user: User = Depends(get_current_user),
-):
-    try:
-        page = get_page_detail(db=db, page_public_id=page_id)
-    except PageNotFoundError as exc:
-        return _error_response(
-            status_code=status.HTTP_404_NOT_FOUND,
-            code="PAGE_NOT_FOUND",
-            message=str(exc),
-            details={"page_id": page_id},
-        )
-    ensure_project_capability(
-        db,
-        user_id=current_user.id,
-        project_id=int(page["project_id"]),
-        capability="can_import_pages",
-    )
-    page_row = db.get(Page, int(page["page_id"]))
-    if not page_row:
-        return _error_response(
-            status_code=status.HTTP_404_NOT_FOUND,
-            code="PAGE_NOT_FOUND",
-            message=f"页面不存在：{page_id}",
-            details={"page_id": page_id},
-        )
-    try:
-        db.delete(page_row)
-        db.commit()
-    except IntegrityError:
-        db.rollback()
-        return _error_response(
-            status_code=status.HTTP_409_CONFLICT,
-            code="PAGE_DELETE_CONFLICT",
-            message="页面存在关联数据，无法删除。",
-            details={"page_id": page_id},
-        )
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 # ── 页面图片 ──

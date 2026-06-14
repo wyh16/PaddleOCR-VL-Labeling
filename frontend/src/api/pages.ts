@@ -125,8 +125,4 @@ export const pagesApi = {
   /** 获取用户在项目中的 capabilities */
   getCapabilities: (projectId: string) =>
     api.get<Capabilities>(`/projects/${projectId}/me/capabilities`),
-
-  /** 删除页面 */
-  delete: (pageId: string) =>
-    api.delete<void>(`/pages/${pageId}`),
 }

@@ -5,14 +5,10 @@ const {
   push,
   replace,
   listMock,
-  getCapabilitiesMock,
-  deleteMock,
 } = vi.hoisted(() => ({
   push: vi.fn(),
   replace: vi.fn(),
   listMock: vi.fn(),
-  getCapabilitiesMock: vi.fn(),
-  deleteMock: vi.fn(),
 }))
 
 import ProjectDetailView from './ProjectDetailView.vue'
@@ -37,8 +33,6 @@ vi.mock('vue-i18n', () => ({
 vi.mock('@/api/pages', () => ({
   pagesApi: {
     list: listMock,
-    getCapabilities: getCapabilitiesMock,
-    delete: deleteMock,
   },
 }))
 
@@ -69,8 +63,6 @@ describe('ProjectDetailView', () => {
     push.mockReset()
     replace.mockReset()
     listMock.mockReset()
-    getCapabilitiesMock.mockReset()
-    deleteMock.mockReset()
 
     listMock.mockResolvedValue({
       items: [
@@ -85,34 +77,24 @@ describe('ProjectDetailView', () => {
       ],
       total: 1,
     })
-    deleteMock.mockResolvedValue(undefined)
   })
 
-  it('无 can_import_pages 时不显示删除按钮', async () => {
-    getCapabilitiesMock.mockResolvedValue({
-      can_import_pages: false,
-    })
+  it('项目页面列表加载成功时显示页面项', async () => {
+    const wrapper = createWrapper()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('page.png')
+    expect(wrapper.text()).toContain('common.edit')
+  })
+
+  it('项目页面列表加载失败时显示错误态而不是空列表', async () => {
+    listMock.mockRejectedValueOnce(new Error('boom'))
 
     const wrapper = createWrapper()
     await flushPromises()
 
-    const deleteButtons = wrapper.findAll('button').filter(button =>
-      button.classes().includes('text-danger') && button.classes().includes('p-2'),
-    )
-    expect(deleteButtons).toHaveLength(0)
-  })
-
-  it('有 can_import_pages 时显示删除按钮', async () => {
-    getCapabilitiesMock.mockResolvedValue({
-      can_import_pages: true,
-    })
-
-    const wrapper = createWrapper()
-    await flushPromises()
-
-    const deleteButtons = wrapper.findAll('button').filter(button =>
-      button.classes().includes('text-danger') && button.classes().includes('p-2'),
-    )
-    expect(deleteButtons).toHaveLength(1)
+    expect(wrapper.text()).toContain('error')
+    expect(wrapper.text()).toContain('common.retry')
+    expect(wrapper.text()).not.toContain('common.noData')
   })
 })

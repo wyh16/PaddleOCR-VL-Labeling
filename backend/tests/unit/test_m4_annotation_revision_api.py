@@ -42,7 +42,6 @@ def test_m4_page_and_annotation_revision_routes_are_registered() -> None:
 
     assert "/api/v1/pages/{page_id}" in routes
     assert "GET" in routes["/api/v1/pages/{page_id}"]
-    assert "DELETE" in routes["/api/v1/pages/{page_id}"]
 
     assert "/api/v1/pages/{page_id}/image" in routes
     assert "GET" in routes["/api/v1/pages/{page_id}/image"]

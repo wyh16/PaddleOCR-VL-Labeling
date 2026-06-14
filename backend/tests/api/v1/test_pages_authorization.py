@@ -10,6 +10,7 @@ from fastapi import HTTPException, status
 from app.api.v1.endpoints import pages as pages_endpoint
 from app.db.models import User
 from app.db.models.document import Document
+from app.db.models.page import Page
 from app.db.models.project import Project
 from app.main import create_app
 
@@ -45,12 +46,17 @@ class FakeDb:
         self._document = document
         self._page_rows = page_rows or []
         self._qc_rows = qc_rows or []
+        self.deleted_objects: list[object] = []
+        self.committed = False
+        self.rolled_back = False
 
     def get(self, model: object, _id: object) -> object | None:
         if model is Project:
             return self._project
         if model is Document:
             return self._document
+        if model is Page:
+            return self._page
         return None
 
     def scalar(self, _stmt: object) -> object | None:
@@ -61,6 +67,15 @@ class FakeDb:
 
     def execute(self, _stmt: object) -> _ExecuteResult:
         return _ExecuteResult(self._page_rows)
+
+    def delete(self, obj: object) -> None:
+        self.deleted_objects.append(obj)
+
+    def commit(self) -> None:
+        self.committed = True
+
+    def rollback(self) -> None:
+        self.rolled_back = True
 
 
 def _project_row(project_id: int = 10) -> object:
@@ -112,7 +127,14 @@ def _qc_row() -> object:
     )()
 
 
-def create_test_app(monkeypatch: Any, db: FakeDb, *, allowed_project_ids: set[int]):
+def create_test_app(
+    monkeypatch: Any,
+    db: FakeDb,
+    *,
+    allowed_project_ids: set[int],
+    allowed_capabilities: set[str] | None = None,
+):
+    allowed_capabilities = allowed_capabilities or {"can_view_project"}
     app = create_app()
     app.dependency_overrides[pages_endpoint.get_current_user] = lambda: User(
         id=99,
@@ -130,7 +152,7 @@ def create_test_app(monkeypatch: Any, db: FakeDb, *, allowed_project_ids: set[in
         capability: str,
     ) -> None:
         assert user_id == 99
-        assert capability == "can_view_project"
+        assert capability in allowed_capabilities
         if project_id not in allowed_project_ids:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -138,6 +160,29 @@ def create_test_app(monkeypatch: Any, db: FakeDb, *, allowed_project_ids: set[in
             )
 
     monkeypatch.setattr(pages_endpoint, "ensure_project_capability", check_capability)
+    monkeypatch.setattr(
+        pages_endpoint,
+        "get_page_detail",
+        lambda *, db, page_public_id: (
+            {
+                "page_id": 30,
+                "page_public_id": page_public_id,
+                "document_id": 20,
+                "document_public_id": "doc_public_001",
+                "project_id": 10,
+                "status": "uploaded",
+                "page_index": 1,
+                "capture_method": None,
+                "visual_difficulty": None,
+                "image_asset_public_id": None,
+                "width": 1200,
+                "height": 1600,
+                "image_sha256": None,
+            }
+            if db._page is not None
+            else (_ for _ in ()).throw(pages_endpoint.PageNotFoundError(page_public_id))
+        ),
+    )
     return app
 
 
@@ -227,3 +272,15 @@ def test_unknown_page_id_returns_404_for_page_qc(monkeypatch: Any) -> None:
     assert response.status_code == 404
     payload = response.json()
     assert payload["error"]["code"] == "PAGE_NOT_FOUND"
+
+
+def test_delete_page_endpoint_is_not_exposed(monkeypatch: Any) -> None:
+    app = create_test_app(
+        monkeypatch,
+        FakeDb(page=_page_row()),
+        allowed_project_ids={10},
+    )
+
+    response = request(app, "DELETE", "/api/v1/pages/page_public_001")
+
+    assert response.status_code == 405

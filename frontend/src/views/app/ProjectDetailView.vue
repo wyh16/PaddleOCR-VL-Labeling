@@ -6,9 +6,9 @@
 import { computed, ref, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { pagesApi, type Page, type Capabilities } from '@/api/pages'
+import { pagesApi, type Page } from '@/api/pages'
 import { assetsApi } from '@/api/assets'
-import { BaseButton, BaseEmptyState } from '@/components/base'
+import { BaseButton, BaseEmptyState, BaseErrorState } from '@/components/base'
 import { formatProjectDetailError } from './projectDetailErrors'
 import { FileCheck, AlertCircle, Loader2, FileImage, PenTool, X, RotateCcw, Upload } from 'lucide-vue-next'
 
@@ -17,30 +17,23 @@ const route = useRoute()
 const router = useRouter()
 
 const projectId = computed(() => route.params.project_id as string)
-const projectCapabilities = ref<Capabilities | null>(null)
-const canDeletePages = computed(() => Boolean(projectCapabilities.value?.can_import_pages))
 
 // ── 页面列表 ──
 const pages = ref<Page[]>([])
 const pagesLoading = ref(true)
+const pagesError = ref('')
 
 async function loadPages() {
   pagesLoading.value = true
+  pagesError.value = ''
   try {
     const res = await pagesApi.list(projectId.value)
     pages.value = res.items
-  } catch {
+  } catch (e) {
     pages.value = []
+    pagesError.value = formatProjectDetailError(t, e, 'errors.server')
   } finally {
     pagesLoading.value = false
-  }
-}
-
-async function loadProjectCapabilities() {
-  try {
-    projectCapabilities.value = await pagesApi.getCapabilities(projectId.value)
-  } catch {
-    projectCapabilities.value = null
   }
 }
 
@@ -49,7 +42,6 @@ function openWorkspace(pageId: string) {
 }
 
 onMounted(() => {
-  loadProjectCapabilities()
   loadPages()
 })
 
@@ -117,7 +109,6 @@ interface UploadItem {
 
 const uploadItems = ref<UploadItem[]>([])
 let idCounter = 0
-const deleteError = ref('')
 
 function addFiles(files: File[]) {
   const imageFiles = files.filter(f => f.type.startsWith('image/'))
@@ -220,24 +211,6 @@ function clearCompleted() {
 
 const pendingCount = computed(() => uploadItems.value.filter(i => i.status === 'pending').length)
 const activeCount = computed(() => uploadItems.value.filter(i => i.status === 'uploading').length)
-
-// ── 删除页面 ──
-const deletingId = ref<string | null>(null)
-
-async function deletePage(pageId: string, e: Event) {
-  e.stopPropagation()
-  if (!confirm(t('upload.deleteConfirm'))) return
-  deletingId.value = pageId
-  deleteError.value = ''
-  try {
-    await pagesApi.delete(pageId)
-    pages.value = pages.value.filter(p => p.page_id !== pageId)
-  } catch (e) {
-    deleteError.value = formatProjectDetailError(t, e, 'errors.server')
-  } finally {
-    deletingId.value = null
-  }
-}
 
 </script>
 
@@ -372,14 +345,17 @@ async function deletePage(pageId: string, e: Event) {
         <div class="mt-6">
           <h3 class="text-body-medium text-text mb-3">{{ t('routes.projects.tabs.pages') }}</h3>
 
-          <div v-if="deleteError"
-            class="mb-3 rounded-lg border border-danger/30 bg-danger-bg px-4 py-3 text-caption text-danger">
-            {{ deleteError }}
-          </div>
-
           <div v-if="pagesLoading" class="space-y-2">
             <div v-for="i in 3" :key="i" class="h-16 bg-surface-alt rounded-lg animate-pulse"></div>
           </div>
+
+          <BaseErrorState
+            v-else-if="pagesError"
+            :title="pagesError"
+            :retry-label="t('common.retry')"
+            :can-retry="true"
+            @retry="loadPages"
+          />
 
           <BaseEmptyState v-else-if="pages.length === 0" :title="t('common.noData')"
             :description="t('upload.selectFiles')" />
@@ -398,12 +374,6 @@ async function deletePage(pageId: string, e: Event) {
               <BaseButton type="button" variant="secondary" size="sm" :left-icon="PenTool">
                 {{ t('common.edit') }}
               </BaseButton>
-              <button v-if="canDeletePages" type="button"
-                class="inline-flex items-center justify-center rounded-md p-2 text-danger transition-colors hover:bg-danger-bg"
-                :loading="deletingId === page.page_id" @click="deletePage(page.page_id, $event)">
-                <Loader2 v-if="deletingId === page.page_id" class="w-3.5 h-3.5 animate-spin" />
-                <X v-else class="w-3.5 h-3.5" />
-              </button>
             </div>
           </div>
         </div>
