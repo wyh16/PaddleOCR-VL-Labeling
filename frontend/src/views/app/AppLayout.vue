@@ -15,6 +15,7 @@ import {
   Database,
   PenTool,
   ShieldCheck,
+  Users,
   Download,
   Settings,
   LogOut,
@@ -67,7 +68,7 @@ const navItems = computed<NavItem[]>(() => [
     : [{ key: 'qc', icon: ShieldCheck, disabled: true }]),
   { key: 'exports', icon: Download, disabled: true },
   ...(user.value?.is_system_admin
-    ? [{ key: 'users', icon: ShieldCheck, routeName: 'users.index' as const }]
+    ? [{ key: 'users', icon: Users, routeName: 'users.index' as const }]
     : []),
   { key: 'settings', icon: Settings, routeName: 'settings.index' },
 ])
