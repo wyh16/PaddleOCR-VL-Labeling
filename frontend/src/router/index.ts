@@ -95,6 +95,19 @@ const routes: RouteRecordRaw[] = [
         } as AppRouteMeta,
       },
       {
+        path: 'users',
+        name: 'users.index',
+        component: () => import('@/views/app/UsersView.vue'),
+        meta: {
+          requiresAuth: true,
+          layout: 'app',
+          titleKey: 'routes.users.index',
+          projectContextSource: 'none',
+          navKey: 'users',
+          capability: 'can_manage_system_users',
+        } as AppRouteMeta,
+      },
+      {
         path: 'settings',
         name: 'settings.index',
         component: () => import('@/views/app/SettingsView.vue'),
