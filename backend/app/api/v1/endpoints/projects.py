@@ -121,6 +121,13 @@ def list_projects(
     db: Session = Depends(get_db_session),
     current_user: User = Depends(get_current_user),
 ) -> ProjectListOut:
+    if current_user.is_system_admin:
+        projects = db.scalars(select(Project).order_by(Project.created_at.desc())).all()
+        return ProjectListOut(
+            items=[ProjectOut.model_validate(p) for p in projects],
+            total=len(projects),
+        )
+
     visible_project_ids = _get_visible_project_ids(db, user_id=current_user.id)
     if not visible_project_ids:
         return ProjectListOut(items=[], total=0)
@@ -335,6 +342,7 @@ def get_my_capabilities(
         )
 
     if current_user.is_system_admin:
+        capabilities.update(PROJECT_CAPABILITIES)
         capabilities.update(SYSTEM_CAPABILITIES)
 
     all_caps = (*PROJECT_CAPABILITIES, *SYSTEM_CAPABILITIES)

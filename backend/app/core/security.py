@@ -186,6 +186,8 @@ def require_project_capability(capability: str) -> Callable[..., User]:
         current_user: User = Depends(get_current_user),
         db: Session = Depends(get_db_session),
     ) -> User:
+        if current_user.is_system_admin:
+            return current_user
         capabilities = get_project_capabilities(
             db,
             user_id=current_user.id,
@@ -209,6 +211,10 @@ def ensure_project_capability(
     capability: str,
 ) -> None:
     """为 project_id 不在路径参数中的接口显式校验项目能力。"""
+
+    user = db.get(User, user_id)
+    if user and user.is_system_admin:
+        return
 
     # 项目创建者自动拥有所有项目能力
     project = db.get(Project, project_id)
