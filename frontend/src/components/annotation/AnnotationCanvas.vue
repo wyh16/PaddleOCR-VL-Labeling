@@ -10,6 +10,7 @@
  * 快捷键：参见 annotation_workspace_interaction_spec.md §15.1
  */
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useCanvasRenderer } from '@/composables/useCanvasRenderer'
 import { useAnnotationStore } from '@/composables/useAnnotationStore'
 import BBoxOverlay from './BBoxOverlay.vue'
@@ -38,6 +39,7 @@ const emit = defineEmits<{
   'object-selected': [id: string | null]
   'objects-changed': []
 }>()
+const { t } = useI18n()
 
 // ── 核心依赖 ──
 const store = useAnnotationStore()
@@ -435,7 +437,7 @@ const cursorClass = computed(() => {
     @wheel.prevent="onWheel">
     <!-- 图片加载失败 -->
     <div v-if="imageLoadFailed" class="absolute inset-0 flex items-center justify-center text-text-muted">
-      <span class="text-caption">图片加载失败</span>
+      <span class="text-caption">{{ t('annotation.imageLoadFailed') }}</span>
     </div>
 
     <!-- 加载中 -->

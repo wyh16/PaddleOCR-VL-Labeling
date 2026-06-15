@@ -73,6 +73,7 @@ export default {
     deleteConfirm: '确定删除项目“{name}”？此操作不可撤销。',
   },
   annotation: {
+    imageLoadFailed: '图片加载失败',
     saveStatus: {
       saved: '已保存',
       saving: '保存中...',

@@ -1234,7 +1234,7 @@ M4 页面与标注 revision 接口当前使用的业务错误 code：
 3. 当前没有对象级 patch API；标注保存以整页 annotation JSON revision 为单位。
 4. 当前标注 JSON 已要求 k12_annotations 字段存在；relations 仍允许缺失并按空数组处理。
 5. 当前没有 revision submit、lock、rollback、review、qc run 等流转接口。
-6. 当前页面图片访问已提供短期签名 URL；签名默认 5 分钟有效，raw 端点要求 exp 和 sig 校验通过。
+6. 当前页面图片访问已提供短期签名 URL；签名默认 5 分钟有效，raw 端点要求已登录会话，并校验 exp、nonce 和 sig。
 7. 当前页面图片签名 URL 已绑定 user_id 和 nonce，并在 raw 端点校验当前用户权限与 nonce 防重放；但 nonce 目前使用进程内缓存，后续多实例部署时需要切到共享缓存。
 8. 当前 Cookie 会话尚未实现专用 CSRF token 或双提交校验；生产部署前必须补齐 CSRF 防护，或保持同源 SameSite 策略并在安全文档中明确边界。
 9. 当前项目、标签、capabilities、revision 列表和 QC 列表等接口尚未统一 `{data, request_id}` 响应包装，前端需要逐接口适配，后续应按 backend_development_spec.md 收敛。

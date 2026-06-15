@@ -73,6 +73,7 @@ export default {
     deleteConfirm: 'Delete project "{name}"? This action cannot be undone.',
   },
   annotation: {
+    imageLoadFailed: 'Image load failed',
     saveStatus: {
       saved: 'Saved',
       saving: 'Saving...',

@@ -53,6 +53,12 @@ vi.mock('@/composables/useCanvasRenderer', () => ({
   }),
 }))
 
+vi.mock('vue-i18n', () => ({
+  useI18n: () => ({
+    t: (key: string) => key === 'annotation.imageLoadFailed' ? 'Image load failed' : key,
+  }),
+}))
+
 import AnnotationCanvas from '../AnnotationCanvas.vue'
 
 function createWrapper(imageUrl: string | null) {
@@ -92,7 +98,7 @@ describe('AnnotationCanvas', () => {
     await flushPromises()
 
     expect(clearImageMock).toHaveBeenCalled()
-    expect(wrapper.text()).toContain('图片加载失败')
+    expect(wrapper.text()).toContain('Image load failed')
   })
 
   it('图片加载异常时不再保持永久加载态', async () => {
@@ -102,6 +108,6 @@ describe('AnnotationCanvas', () => {
     await flushPromises()
 
     expect(clearImageMock).toHaveBeenCalled()
-    expect(wrapper.text()).toContain('图片加载失败')
+    expect(wrapper.text()).toContain('Image load failed')
   })
 })
