@@ -128,9 +128,9 @@ Authorization: Bearer <access_token>
 
 | 能力 | 使用接口 |
 |---|---|
-| 创建者本人 | 项目列表、项目详情、项目更新、项目删除 |
+| 创建者本人 | 项目更新、项目删除；作为项目创建者时隐式拥有项目级 capability |
 | `can_upload_assets` | 上传图片资产 |
-| `can_view_project` | 读取项目页面列表、项目标签、页面详情、页面图片 URL、读取最新标注版本、列出页面标注版本、读取指定标注版本、读取页面 QC |
+| `can_view_project` | 项目列表、项目详情、读取项目页面列表、项目标签、页面详情、页面图片 URL、读取最新标注版本、列出页面标注版本、读取指定标注版本、读取页面 QC |
 | `can_create_annotation_revision` | 创建页面标注版本 |
 
 ---
@@ -142,9 +142,9 @@ Authorization: Bearer <access_token>
 | `POST` | `/api/v1/auth/login` | 否 | 已实现 | 用户登录，写入 HttpOnly Cookie 会话。 |
 | `GET` | `/api/v1/auth/me` | 是 | 已实现 | 获取当前登录用户。 |
 | `GET` | `/api/v1/health` | 否 | 已实现 | 数据库和 Redis 健康检查。 |
-| `GET` | `/api/v1/projects` | 是 | 已实现 | 获取当前用户创建的项目列表。 |
+| `GET` | `/api/v1/projects` | 是 | 已实现 | 获取当前用户可见的项目列表。 |
 | `POST` | `/api/v1/projects` | 是 | 已实现 | 创建项目。 |
-| `GET` | `/api/v1/projects/{project_id}` | 是 | 已实现 | 获取项目详情；仅创建者可访问。 |
+| `GET` | `/api/v1/projects/{project_id}` | 是 | 已实现 | 获取项目详情；需要具备 `can_view_project`。 |
 | `PATCH` | `/api/v1/projects/{project_id}` | 是 | 已实现 | 更新项目；仅创建者可操作。 |
 | `DELETE` | `/api/v1/projects/{project_id}` | 是 | 临时实现 | 删除项目；仅创建者可操作，不建议新前端依赖。 |
 | `POST` | `/api/v1/projects/{project_id}/assets/upload` | 是 | 已实现 | 标准项目级图片上传入口。 |
@@ -408,7 +408,7 @@ Cookie: k12_access_token=...
 当前行为：
 
 ```text
-1. 当前实现只返回 current_user.created_by == 当前用户 的项目，不展开项目成员关系。
+1. 当前实现返回当前用户创建的项目，以及通过 active 项目成员角色具备 `can_view_project` 的项目。
 2. 响应按 created_at 倒序返回。
 ```
 
@@ -472,7 +472,7 @@ GET /api/v1/projects/{project_id}
 Cookie: k12_access_token=...
 ```
 
-鉴权：需要登录，且当前实现仅允许项目创建者访问。
+鉴权：需要登录，且需要具备 `can_view_project`；项目创建者会被视为隐式具备该 capability。
 
 路径参数：
 
@@ -487,7 +487,7 @@ Cookie: k12_access_token=...
 | HTTP 状态码 | 场景 |
 |---|---|
 | `401` | 未登录或认证失效。 |
-| `403` | 当前用户不是项目创建者。 |
+| `403` | 当前用户缺少 `can_view_project`。 |
 | `404` | 项目不存在。 |
 
 ### 7.4 更新项目

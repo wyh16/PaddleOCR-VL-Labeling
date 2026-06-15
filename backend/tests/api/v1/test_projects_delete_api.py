@@ -18,9 +18,11 @@ class FakeDb:
         *,
         project: object | None = None,
         delete_raises_integrity_error: bool = False,
+        commit_raises_integrity_error: bool = False,
     ):
         self._project = project
         self._delete_raises_integrity_error = delete_raises_integrity_error
+        self._commit_raises_integrity_error = commit_raises_integrity_error
         self.deleted_objects: list[object] = []
         self.committed = False
         self.rolled_back = False
@@ -36,6 +38,8 @@ class FakeDb:
         self.deleted_objects.append(obj)
 
     def commit(self) -> None:
+        if self._commit_raises_integrity_error:
+            raise IntegrityError("COMMIT", {}, None)
         self.committed = True
 
     def rollback(self) -> None:
@@ -121,5 +125,28 @@ def test_delete_project_with_related_data_returns_409(monkeypatch: Any) -> None:
     response = request(app, "DELETE", "/api/v1/projects/10")
 
     assert response.status_code == 409
-    assert response.json()["detail"] == "Project has related data and cannot be deleted."
+    assert (
+        response.json()["detail"] == "Project has related data and cannot be deleted."
+    )
+    assert db.rolled_back is True
+
+
+def test_delete_project_with_commit_integrity_error_returns_409(
+    monkeypatch: Any,
+) -> None:
+    project = _project_row(created_by=99)
+    db = FakeDb(
+        project=project,
+        commit_raises_integrity_error=True,
+    )
+    app = create_test_app(monkeypatch, db, current_user_id=99)
+
+    response = request(app, "DELETE", "/api/v1/projects/10")
+
+    assert response.status_code == 409
+    assert (
+        response.json()["detail"] == "Project has related data and cannot be deleted."
+    )
+    assert db.deleted_objects == [project]
+    assert db.committed is False
     assert db.rolled_back is True
