@@ -1,10 +1,10 @@
 """M4a 访问管理 API 验收测试。
 
 覆盖事项：
-1. v1 router 暴露项目成员、角色和 capabilities 相关入口。
+1. v1 router 暴露用户、项目成员和角色相关入口。
 2. project_admin 等具备 can_manage_project_members 的用户可以管理成员。
 3. annotator 等缺少 can_manage_project_members 的用户不能管理成员。
-4. capabilities 接口可直接返回给前端判断按钮可用性。
+4. 项目 capabilities 接口继续由 projects router 负责，避免重复路径覆盖。
 """
 
 from __future__ import annotations
@@ -21,7 +21,6 @@ from app.main import create_app
 from app.services.access_service import (
     AccessNotFoundError,
     AccessValidationError,
-    ProjectCapabilityProfile,
 )
 
 
@@ -34,6 +33,19 @@ def route_methods_by_path() -> dict[str, set[str]]:
         if methods:
             result.setdefault(path, set()).update(methods)
     return result
+
+
+def route_endpoints_for_path(path: str) -> list[str]:
+    app = create_app()
+    endpoints: list[str] = []
+    for route in app.routes:
+        if getattr(route, "path", "") != path:
+            continue
+        endpoint = getattr(route, "endpoint", None)
+        if endpoint is None:
+            continue
+        endpoints.append(f"{endpoint.__module__}.{endpoint.__name__}")
+    return endpoints
 
 
 def create_test_client(
@@ -94,7 +106,6 @@ def test_m4a_access_routes_are_registered() -> None:
     assert "POST" in routes["/api/v1/users"]
     assert "POST" in routes["/api/v1/users/{user_id}/disable"]
     assert "GET" in routes["/api/v1/roles"]
-    assert "GET" in routes["/api/v1/projects/{project_id}/me/capabilities"]
     assert "GET" in routes["/api/v1/projects/{project_id}/members"]
     assert "POST" in routes["/api/v1/projects/{project_id}/members"]
     assert "POST" in routes["/api/v1/projects/{project_id}/members/{member_id}/disable"]
@@ -105,6 +116,14 @@ def test_m4a_access_routes_are_registered() -> None:
         "DELETE"
         in routes["/api/v1/projects/{project_id}/members/{member_id}/roles/{role_code}"]
     )
+
+
+def test_project_capabilities_route_remains_owned_by_projects_router() -> None:
+    endpoints = route_endpoints_for_path(
+        "/api/v1/projects/{project_id}/me/capabilities"
+    )
+
+    assert endpoints == ["app.api.v1.endpoints.projects.get_my_capabilities"]
 
 
 def test_project_admin_can_add_member_and_grant_role(monkeypatch: Any) -> None:
@@ -456,27 +475,3 @@ def test_missing_member_or_role_request_body_returns_422(monkeypatch: Any) -> No
     assert grant_response.status_code == 422
 
 
-def test_capabilities_endpoint_returns_frontend_contract(monkeypatch: Any) -> None:
-    client = create_test_client(monkeypatch)
-    monkeypatch.setattr(
-        access_endpoint,
-        "get_project_capability_profile",
-        lambda **_kwargs: ProjectCapabilityProfile(
-            project_id=10,
-            user_id=99,
-            member_status="active",
-            roles=["viewer"],
-            capabilities=["can_view_project"],
-        ),
-    )
-
-    response = client.get("/api/v1/projects/10/me/capabilities")
-
-    assert response.status_code == 200
-    assert response.json()["data"] == {
-        "project_id": 10,
-        "user_id": 99,
-        "member_status": "active",
-        "roles": ["viewer"],
-        "capabilities": ["can_view_project"],
-    }

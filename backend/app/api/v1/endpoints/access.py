@@ -16,8 +16,6 @@ from app.db.session import get_db_session
 from app.schemas.access import (
     AddProjectMemberRequest,
     GrantProjectRoleRequest,
-    ProjectCapabilitiesRead,
-    ProjectCapabilitiesResponse,
     ProjectMemberListResponse,
     ProjectMemberRead,
     ProjectMemberResponse,
@@ -36,7 +34,6 @@ from app.services.access_service import (
     create_user,
     disable_project_member,
     disable_user,
-    get_project_capability_profile,
     grant_project_role,
     list_project_member_roles,
     list_project_members,
@@ -128,27 +125,6 @@ def read_roles(
 ) -> RoleListResponse:
     return RoleListResponse(
         data=[_role_read(item) for item in list_roles(db=db)],
-        request_id=new_public_id("req"),
-    )
-
-
-@router.get(
-    "/projects/{project_id}/me/capabilities",
-    response_model=ProjectCapabilitiesResponse,
-    summary="查询当前用户项目能力",
-)
-def read_my_project_capabilities(
-    project_id: int,
-    db: Session = Depends(get_db_session),
-    current_user: User = Depends(get_current_user),
-) -> ProjectCapabilitiesResponse:
-    profile = get_project_capability_profile(
-        db=db,
-        project_id=project_id,
-        user_id=current_user.id,
-    )
-    return ProjectCapabilitiesResponse(
-        data=_capability_read(profile),
         request_id=new_public_id("req"),
     )
 
@@ -465,11 +441,3 @@ def _member_read(value: Any) -> ProjectMemberRead:
     )
 
 
-def _capability_read(value: Any) -> ProjectCapabilitiesRead:
-    return ProjectCapabilitiesRead(
-        project_id=value.project_id,
-        user_id=value.user_id,
-        member_status=value.member_status,
-        roles=value.roles,
-        capabilities=value.capabilities,
-    )
