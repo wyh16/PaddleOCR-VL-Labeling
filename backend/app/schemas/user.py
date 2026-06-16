@@ -4,6 +4,12 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from app.core.password_policy import (
+    PASSWORD_MAX_LENGTH,
+    PASSWORD_MIN_LENGTH,
+    normalize_and_validate_password,
+)
+
 
 def _normalize_optional_text(value: str | None) -> str | None:
     if value is None:
@@ -48,7 +54,13 @@ class UserCreate(BaseModel):
 
     username: str = Field(..., title="用户名", description="登录用户名。")
     display_name: str = Field(..., title="显示名称", description="用户显示名称。")
-    password: str = Field(..., title="初始密码", description="用户初始密码。")
+    password: str = Field(
+        ...,
+        min_length=PASSWORD_MIN_LENGTH,
+        max_length=PASSWORD_MAX_LENGTH,
+        title="初始密码",
+        description="用户初始密码。",
+    )
     email: str | None = Field(default=None, title="邮箱", description="用户邮箱。")
     project_id: int | None = Field(
         default=None, title="项目ID", description="需要加入的项目内部主键。"
@@ -64,13 +76,18 @@ class UserCreate(BaseModel):
         description="是否授予系统管理员能力。",
     )
 
-    @field_validator("username", "display_name", "password")
+    @field_validator("username", "display_name")
     @classmethod
     def validate_required_text(cls, value: str) -> str:
         normalized = value.strip()
         if not normalized:
             raise ValueError("字段不能为空。")
         return normalized
+
+    @field_validator("password")
+    @classmethod
+    def validate_password(cls, value: str) -> str:
+        return normalize_and_validate_password(value)
 
     @field_validator("email")
     @classmethod
@@ -97,7 +114,11 @@ class UserUpdate(BaseModel):
         default=None, title="显示名称", description="更新后的显示名称。"
     )
     password: str | None = Field(
-        default=None, title="新密码", description="管理员重置的新密码。"
+        default=None,
+        min_length=PASSWORD_MIN_LENGTH,
+        max_length=PASSWORD_MAX_LENGTH,
+        title="新密码",
+        description="管理员重置的新密码。",
     )
     email: str | None = Field(default=None, title="邮箱", description="更新后的邮箱。")
     project_id: int | None = Field(
@@ -114,7 +135,7 @@ class UserUpdate(BaseModel):
         description="是否授予系统管理员能力。",
     )
 
-    @field_validator("display_name", "password")
+    @field_validator("display_name")
     @classmethod
     def validate_optional_text(cls, value: str | None) -> str | None:
         if value is None:
@@ -123,6 +144,13 @@ class UserUpdate(BaseModel):
         if not normalized:
             raise ValueError("字段不能为空。")
         return normalized
+
+    @field_validator("password")
+    @classmethod
+    def validate_optional_password(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return normalize_and_validate_password(value)
 
     @field_validator("email")
     @classmethod

@@ -17,6 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings, is_missing_or_placeholder
+from app.core.password_policy import normalize_and_validate_password
 from app.db.models import MemberRoleBinding, ProjectMember, RoleRegistry, User
 from app.db.models.project import Project
 from app.db.session import get_db_session
@@ -68,7 +69,9 @@ def decode_access_token(token: str) -> dict[str, Any]:
 
     payload_data = _json_b64decode(payload)
     expires_at = payload_data.get("exp")
-    if not isinstance(expires_at, int) or expires_at <= int(datetime.now(UTC).timestamp()):
+    if not isinstance(expires_at, int) or expires_at <= int(
+        datetime.now(UTC).timestamp()
+    ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Access token expired.",
@@ -79,6 +82,7 @@ def decode_access_token(token: str) -> dict[str, Any]:
 def hash_password(password: str) -> str:
     """把明文密码哈希为带算法、迭代次数和盐值的 PBKDF2 存储串。"""
 
+    password = normalize_and_validate_password(password)
     salt = secrets.token_urlsafe(16)
     digest = hashlib.pbkdf2_hmac(
         "sha256",
@@ -123,7 +127,11 @@ def get_current_user(
     """把 Cookie 会话或 Bearer token 解析为有效且未软删除的当前用户。"""
 
     token = request.cookies.get(get_settings().auth_cookie_name)
-    if token is None and credentials is not None and credentials.scheme.lower() == "bearer":
+    if (
+        token is None
+        and credentials is not None
+        and credentials.scheme.lower() == "bearer"
+    ):
         token = credentials.credentials
 
     if not token:
@@ -257,7 +265,9 @@ def get_project_capabilities(db: Session, *, user_id: int, project_id: int) -> s
         if isinstance(capability_items, list):
             # permissions_json 来自 JSONB 数据，只接受字符串能力码，避免异常种子
             # 数据把非字符串值误解释为可用权限。
-            capabilities.update(item for item in capability_items if isinstance(item, str))
+            capabilities.update(
+                item for item in capability_items if isinstance(item, str)
+            )
     return capabilities
 
 
