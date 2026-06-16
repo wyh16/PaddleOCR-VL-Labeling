@@ -1,7 +1,7 @@
 # 文档标注平台 MVP 实施计划
 
-版本：v0.2  
-日期：2026-05-26  
+版本：v0.3
+日期：2026-06-15
 适用范围：后端优先的第一版可运行系统，目标是把平台从设计文档推进到可启动、可迁移、可导入、可保存标注、可质检、可导出的工程状态。
 
 参考文档：
@@ -295,22 +295,26 @@ read_order 能保存、读取，并随 revision 历史记录保持一致。
 任务：
 
 ```text
-1. 实现用户基础查询和禁用能力。
+1. 实现系统用户管理能力：创建用户、查询用户和禁用用户。
 2. 实现项目成员列表、添加、禁用或移除。
 3. 实现项目成员角色授予和撤销。
 4. 实现当前用户项目 capabilities 查询。
-5. 角色变更、成员禁用、成员移除写入 audit_logs。
+5. 用户创建、用户禁用、角色变更、成员禁用、成员移除写入 audit_logs。
 6. 写接口统一调用 capability 校验，不信任前端传入角色。
+7. 默认不开放用户自助注册；项目管理员只能把已有 active 用户加入项目。
+8. 系统用户管理接口统一检查 `can_manage_system_users`；MVP 阶段该 capability 由 `is_system_admin=true` 推导。
 ```
 
 验收：
 
 ```text
+具备 can_manage_system_users 的用户可以创建普通用户，且响应不返回明文密码或 password_hash。
+缺少 can_manage_system_users 的用户不能创建或禁用系统用户。
 project_admin 可以管理本项目成员和项目级角色。
 annotator 不能管理成员。
 viewer 不能创建 annotation revision。
 前端可通过 capabilities 判断按钮是否可用。
-角色变更有 audit_logs 记录。
+用户创建、用户禁用和角色变更有 audit_logs 记录。
 ```
 
 ### 6.6 M5：标签注册与场景 profile 基础
@@ -529,7 +533,7 @@ MVP 完成不是指平台功能完整，而是指工程闭环成立：
 6. 基础 QC 能发现常见错误。
 7. PaddleOCR-VL run 和原始输出能归档追溯。
 8. 能导出最小 PP-DocLayoutV3 数据包。
-9. 用户、项目成员、项目角色和 capabilities 可用。
+9. can_manage_system_users 创建/禁用用户、项目成员、项目角色和 capabilities 可用。
 10. README 能指导本地运行和验证。
 11. 后续前端和业务场景可以基于当前 API 继续开发。
 ```

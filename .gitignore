@@ -11,6 +11,7 @@ env/
 # Local environment files
 .env
 *.env.local
+.agents/
 
 # Tool caches
 .pytest_cache/

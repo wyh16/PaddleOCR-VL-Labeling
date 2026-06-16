@@ -1,7 +1,7 @@
 # 后端接口文档
 
-版本：v0.4
-日期：2026-06-14
+版本：v0.5
+日期：2026-06-15
 用途：记录当前后端已经实现、可用于前后端联调的 API 契约。规划中但尚未实现的接口继续以 `k12_annotation_platform_backend_design.md` 为准。
 
 ## 目录
@@ -35,9 +35,10 @@
   - 8.6 列出页面标注版本
   - 8.7 读取页面指定标注版本
   - 8.8 获取页面 QC 问题列表
-- 9. 当前错误响应约定
-- 10. 当前限制与后续收敛点
-- 11. 维护规则
+- 9. 角色管理与 capabilities
+- 10. 当前错误响应约定
+- 11. 当前限制与后续收敛点
+- 12. 维护规则
 
 ---
 
@@ -45,6 +46,7 @@
 
 | 版本 | 日期 | 说明 |
 |---|---|---|
+| v0.5 | 2026-06-15 | 补充 M4a 用户、角色、项目成员和 capabilities 已实现接口，并保留项目、页面、图片签名和 QC 接口说明。 |
 | v0.4 | 2026-06-14 | 移除未批准的页面删除接口，避免前后端继续依赖物理删除能力。 |
 | v0.3 | 2026-06-13 | 收敛认证、响应包装和临时接口说明，明确 Cookie/CSRF、页面删除和响应格式待规范化边界。 |
 | v0.2 | 2026-06-11 | 补齐 projects、project pages、project capabilities、page delete、revision list/detail 和 page QC 已实现接口。 |
@@ -132,6 +134,7 @@ Authorization: Bearer <access_token>
 | `can_upload_assets` | 上传图片资产 |
 | `can_view_project` | 项目列表、项目详情、读取项目页面列表、项目标签、页面详情、页面图片 URL、读取最新标注版本、列出页面标注版本、读取指定标注版本、读取页面 QC |
 | `can_create_annotation_revision` | 创建页面标注版本 |
+| `can_manage_project_members` | 添加、禁用、移除项目成员，以及授予或撤销项目角色 |
 
 ---
 
@@ -160,6 +163,17 @@ Authorization: Bearer <access_token>
 | `GET` | `/api/v1/pages/{page_id}/annotation/revisions` | 是 | 已实现 | 列出页面标注版本。 |
 | `GET` | `/api/v1/pages/{page_id}/annotation/revisions/{revision_id}` | 是 | 已实现 | 读取页面指定标注版本。 |
 | `GET` | `/api/v1/pages/{page_id}/qc` | 是 | 已实现 | 获取页面 QC 问题列表。 |
+| `GET` | `/api/v1/users` | 是 | 已实现 | 具备 `can_manage_system_users` 的用户查询用户列表。 |
+| `POST` | `/api/v1/users` | 是 | 已实现 | 具备 `can_manage_system_users` 的用户创建用户，不返回临时密码或密码哈希。 |
+| `POST` | `/api/v1/users/{user_id}/disable` | 是 | 已实现 | 具备 `can_manage_system_users` 的用户禁用用户。 |
+| `GET` | `/api/v1/roles` | 是 | 已实现 | 查询内置角色及 capabilities。 |
+| `GET` | `/api/v1/projects/{project_id}/members` | 是 | 已实现 | 查询项目成员，需要 `can_manage_project_members`。 |
+| `POST` | `/api/v1/projects/{project_id}/members` | 是 | 已实现 | 添加项目成员，需要 `can_manage_project_members`。 |
+| `POST` | `/api/v1/projects/{project_id}/members/{member_id}/disable` | 是 | 已实现 | 禁用项目成员，需要 `can_manage_project_members`。 |
+| `DELETE` | `/api/v1/projects/{project_id}/members/{member_id}` | 是 | 已实现 | 移除项目成员，需要 `can_manage_project_members`。 |
+| `GET` | `/api/v1/projects/{project_id}/members/{member_id}/roles` | 是 | 已实现 | 查询项目成员角色，需要 `can_manage_project_members`。 |
+| `POST` | `/api/v1/projects/{project_id}/members/{member_id}/roles` | 是 | 已实现 | 授予项目角色，需要 `can_manage_project_members`。 |
+| `DELETE` | `/api/v1/projects/{project_id}/members/{member_id}/roles/{role_code}` | 是 | 已实现 | 撤销项目角色，需要 `can_manage_project_members`。 |
 
 ---
 
@@ -1182,9 +1196,501 @@ Cookie: k12_access_token=...
 
 ---
 
-## 9. 当前错误响应约定
+## 9. 角色管理与 capabilities
 
-M4 页面与标注 revision 接口捕获的业务错误使用统一结构：
+M4a 接口用于把项目成员、项目角色和前端 capabilities 判断闭环起来。
+前端可以读取 `/projects/{project_id}/me/capabilities` 判断按钮可用性，但所有写接口仍由后端基于当前用户重新计算 capability。
+
+当前 M4a 路径中的 `{project_id}`、`{user_id}` 和 `{member_id}` 均为数据库内部整数 ID。
+
+### 9.1 公共响应对象
+
+`UserRead`：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | integer | 用户内部编号。 |
+| `username` | string | 用户名。 |
+| `display_name` | string | 显示名称。 |
+| `email` | string/null | 邮箱；当前实现可为空。 |
+| `status` | string | 用户状态，例如 `active`、`disabled`、`pending`。 |
+| `is_system_admin` | boolean | 是否系统管理员。MVP 阶段 `is_system_admin=true` 会推导出 `can_manage_system_users`，但不自动获得项目内业务权限。 |
+
+`RoleRead`：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `code` | string | 角色编码，例如 `viewer`、`annotator`、`project_admin`。 |
+| `display_name` | string | 角色显示名。 |
+| `scope` | string | 角色作用域，当前为 `project` 或 `system`。 |
+| `description` | string/null | 角色说明。 |
+| `capabilities` | array[string] | 角色声明的 capability 列表；前端可展示，但写接口仍以后端重新计算为准。 |
+
+`ProjectMemberRead`：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `member_id` | integer | 项目成员内部编号，即 `project_members.id`。 |
+| `project_id` | integer | 项目内部编号。 |
+| `user` | object | 成员关联的 `UserRead`。 |
+| `member_status` | string | 成员状态，例如 `active`、`disabled`、`removed`。 |
+| `roles` | array[string] | 当前 active 项目角色绑定列表，按角色编码排序。 |
+
+成功响应均使用 `{ "data": ..., "request_id": "req_xxx" }` 包装。
+
+### 9.2 项目能力接口边界
+
+补充说明：
+
+```text
+1. 当前用户项目能力接口由第 7.7 节 `GET /api/v1/projects/{project_id}/me/capabilities` 提供，access router 不重复挂载同一路径。
+2. M4a 项目成员和项目角色写接口使用 `can_manage_project_members` 做后端校验，能力来源与第 7.7 节接口一致。
+3. `can_manage_system_users` 是系统级 capability，不会自动授予项目内 capabilities。
+4. MVP 阶段 `can_manage_system_users` 由 `is_system_admin=true` 推导；后续可扩展为系统级角色绑定。
+5. 前端展示角色时可读成员接口返回的 roles，但所有按钮可用性应优先读第 7.7 节 capabilities 映射。
+```
+
+### 9.3 用户和角色基础接口
+
+#### 9.3.1 查询用户列表
+
+```http
+GET /api/v1/users
+Authorization: Bearer <access_token>
+```
+
+权限：
+
+```text
+需要 `can_manage_system_users`。
+MVP 阶段该 capability 由 `current_user.is_system_admin=true` 推导。
+```
+
+成功响应：
+
+```json
+{
+  "data": [
+    {
+      "id": 20,
+      "username": "annotator",
+      "display_name": "标注员",
+      "email": null,
+      "status": "active",
+      "is_system_admin": false
+    }
+  ],
+  "request_id": "req_xxx"
+}
+```
+
+实现说明：
+
+```text
+1. 当前返回未软删除用户。
+2. 不返回 password_hash 等认证敏感字段。
+```
+
+#### 9.3.2 创建用户
+
+```http
+POST /api/v1/users
+Authorization: Bearer <access_token>
+Content-Type: application/json
+```
+
+权限：
+
+```text
+需要 `can_manage_system_users`。
+MVP 阶段该 capability 由 `current_user.is_system_admin=true` 推导。
+该接口是管理员开户接口，不是公开注册接口。
+```
+
+请求体：
+
+```json
+{
+  "username": "new_user",
+  "display_name": "新用户",
+  "email": "new_user@example.com",
+  "temporary_password": "ChangeMe-123456",
+  "is_system_admin": false
+}
+```
+
+请求字段：
+
+| 字段 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `username` | string | 是 | 登录用户名。服务端会 trim、转小写，并限制为 3-64 位小写字母、数字、下划线、点或连字符，且必须以字母或数字开头。 |
+| `display_name` | string | 是 | 页面展示名称。 |
+| `email` | string/null | 否 | 用户邮箱。填写时服务端会 trim、转小写、校验格式，并要求未被其他未软删除用户使用。 |
+| `temporary_password` | string | 是 | 管理员设置的临时密码。只用于本次请求参与哈希，不进入响应、日志或审计 details。 |
+| `is_system_admin` | boolean | 否 | 是否创建为系统管理员。普通实验室成员应为 `false`。 |
+
+成功响应：`201`
+
+```json
+{
+  "data": {
+    "id": 23,
+    "username": "new_user",
+    "display_name": "新用户",
+    "email": "new_user@example.com",
+    "status": "active",
+    "is_system_admin": false
+  },
+  "request_id": "req_xxx"
+}
+```
+
+保存行为：
+
+```text
+1. 创建 users 记录，status=active，password_must_change=true。
+2. password_hash 只保存 PBKDF2 哈希，不保存 temporary_password。
+3. 写入 audit_logs，action=user.create，resource_type=user。
+4. audit_logs.after_json 只记录 user_id、username、email、status、is_system_admin、password_must_change，不记录 temporary_password 或 password_hash。
+5. 创建用户不会自动加入任何项目；必须再通过项目成员和项目角色接口授权。
+```
+
+#### 9.3.3 禁用用户
+
+```http
+POST /api/v1/users/{user_id}/disable
+Authorization: Bearer <access_token>
+```
+
+权限：
+
+```text
+需要 `can_manage_system_users`。
+MVP 阶段该 capability 由 `current_user.is_system_admin=true` 推导。
+```
+
+请求体：无。
+
+成功响应：`200`
+
+```json
+{
+  "data": {
+    "id": 20,
+    "username": "annotator",
+    "display_name": "标注员",
+    "email": null,
+    "status": "disabled",
+    "is_system_admin": false
+  },
+  "request_id": "req_xxx"
+}
+```
+
+保存行为：
+
+```text
+1. 将 users.status 设置为 disabled。
+2. 写入 audit_logs，action=user.disable，resource_type=user。
+3. 不删除用户，不破坏历史 created_by / reviewer_id / export created_by 等追溯字段。
+```
+
+#### 9.3.4 查询内置角色
+
+```http
+GET /api/v1/roles
+Authorization: Bearer <access_token>
+```
+
+权限：
+
+```text
+需要登录，不要求 system_admin 或项目 capability。
+```
+
+成功响应：
+
+```json
+{
+  "data": [
+    {
+      "code": "viewer",
+      "display_name": "查看者",
+      "scope": "project",
+      "description": "只读查看项目数据。",
+      "capabilities": ["can_view_project"]
+    }
+  ],
+  "request_id": "req_xxx"
+}
+```
+
+实现说明：
+
+```text
+1. 只返回 active 且 builtin 的角色。
+2. 列表按 scope、code 稳定排序。
+3. 当前不提供自定义角色创建、编辑或停用接口。
+```
+
+### 9.4 项目成员管理
+
+以下接口均要求当前用户具备 `can_manage_project_members`：
+
+```http
+GET    /api/v1/projects/{project_id}/members
+POST   /api/v1/projects/{project_id}/members
+POST   /api/v1/projects/{project_id}/members/{member_id}/disable
+DELETE /api/v1/projects/{project_id}/members/{member_id}
+```
+
+#### 9.4.1 查询项目成员
+
+```http
+GET /api/v1/projects/{project_id}/members
+Authorization: Bearer <access_token>
+```
+
+成功响应：`200`
+
+```json
+{
+  "data": [
+    {
+      "member_id": 7,
+      "project_id": 10,
+      "user": {
+        "id": 20,
+        "username": "annotator",
+        "display_name": "标注员",
+        "email": null,
+        "status": "active",
+        "is_system_admin": false
+      },
+      "member_status": "active",
+      "roles": ["annotator"]
+    }
+  ],
+  "request_id": "req_xxx"
+}
+```
+
+实现说明：
+
+```text
+当前返回该项目下全部 project_members 记录，包括 active、disabled 和 removed 成员。
+```
+
+#### 9.4.2 添加项目成员
+
+```http
+POST /api/v1/projects/{project_id}/members
+Authorization: Bearer <access_token>
+Content-Type: application/json
+```
+
+请求体：
+
+```json
+{
+  "user_id": 20
+}
+```
+
+请求字段：
+
+| 字段 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `user_id` | integer | 是 | 要加入项目的用户内部编号。用户必须存在且 `status=active`。 |
+
+成功响应：`201`，响应体为 `ProjectMemberRead`。
+
+保存行为：
+
+```text
+1. 新建 project_members 记录，member_status=active。
+2. 如果该用户已经是项目成员，当前 repository 会复用已有记录并把 member_status 恢复为 active，不创建重复成员。
+3. 写入 audit_logs，action=member.add，resource_type=project_member。
+```
+
+#### 9.4.3 禁用项目成员
+
+```http
+POST /api/v1/projects/{project_id}/members/{member_id}/disable
+Authorization: Bearer <access_token>
+```
+
+请求体：无。
+
+成功响应：`200`，响应体为 `ProjectMemberRead`，其中 `member_status="disabled"`。
+
+保存行为：
+
+```text
+1. 将 project_members.member_status 设置为 disabled。
+2. 写入 audit_logs，action=member.disable，resource_type=project_member。
+3. 不删除项目成员记录，不破坏历史引用。
+```
+
+#### 9.4.4 移除项目成员
+
+```http
+DELETE /api/v1/projects/{project_id}/members/{member_id}
+Authorization: Bearer <access_token>
+```
+
+请求体：无。
+
+成功响应：`200`，响应体为 `ProjectMemberRead`，其中 `member_status="removed"`。
+
+保存行为：
+
+```text
+1. 将 project_members.member_status 设置为 removed，并写入 removed_at。
+2. 写入 audit_logs，action=member.remove，resource_type=project_member。
+3. 不物理删除项目成员记录，不破坏历史 created_by、revision、导出等引用。
+```
+
+### 9.5 项目成员角色管理
+
+以下接口均要求当前用户具备 `can_manage_project_members`：
+
+```http
+GET    /api/v1/projects/{project_id}/members/{member_id}/roles
+POST   /api/v1/projects/{project_id}/members/{member_id}/roles
+DELETE /api/v1/projects/{project_id}/members/{member_id}/roles/{role_code}
+```
+
+#### 9.5.1 查询项目成员角色
+
+```http
+GET /api/v1/projects/{project_id}/members/{member_id}/roles
+Authorization: Bearer <access_token>
+```
+
+成功响应：`200`
+
+```json
+{
+  "data": ["annotator", "viewer"],
+  "request_id": "req_xxx"
+}
+```
+
+实现说明：
+
+```text
+返回该成员当前 active 项目角色编码列表，按 role_code 排序。
+```
+
+#### 9.5.2 授予项目成员角色
+
+```http
+POST /api/v1/projects/{project_id}/members/{member_id}/roles
+Authorization: Bearer <access_token>
+Content-Type: application/json
+```
+
+请求体：
+
+```json
+{
+  "role_code": "annotator"
+}
+```
+
+请求字段：
+
+| 字段 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `role_code` | string | 是 | 要授予的项目级角色编码，例如 `viewer`、`annotator`、`reviewer`、`data_manager`、`exporter`、`project_admin`。 |
+
+成功响应：`201`
+
+```json
+{
+  "data": ["annotator", "viewer"],
+  "request_id": "req_xxx"
+}
+```
+
+保存行为：
+
+```text
+1. 只允许给 active 项目成员授予角色。
+2. 只能授予 scope=project 且 is_active=true 的角色。
+3. 不能把 system_admin 等系统级角色绑定到项目成员。
+4. 重复授予同一 active 角色时不创建重复 active binding。
+5. 写入 audit_logs，action=role.grant，resource_type=member_role_binding。
+```
+
+#### 9.5.3 撤销项目成员角色
+
+```http
+DELETE /api/v1/projects/{project_id}/members/{member_id}/roles/{role_code}
+Authorization: Bearer <access_token>
+```
+
+请求体：无。
+
+成功响应：`200`
+
+```json
+{
+  "data": ["viewer"],
+  "request_id": "req_xxx"
+}
+```
+
+保存行为：
+
+```text
+1. 找到该成员当前 active role binding。
+2. 将 binding.status 设置为 revoked，写入 revoked_by 和 revoked_at。
+3. 写入 audit_logs，action=role.revoke，resource_type=member_role_binding。
+```
+
+### 9.6 M4a 错误响应
+
+M4a service 层业务错误使用统一结构：
+
+```json
+{
+  "error": {
+    "code": "USER_NOT_FOUND",
+    "message": "用户不存在：404",
+    "details": {
+      "user_id": 404
+    }
+  },
+  "request_id": "req_xxx"
+}
+```
+
+业务错误码：
+
+| HTTP 状态码 | code | 场景 | details |
+|---:|---|---|---|
+| `404` | `USER_NOT_FOUND` | 禁用用户或添加项目成员时，目标用户不存在。 | `user_id` |
+| `404` | `PROJECT_MEMBER_NOT_FOUND` | 查询、禁用、移除成员，或查询成员角色时，项目成员不存在。 | `member_id` |
+| `404` | `ROLE_OR_MEMBER_NOT_FOUND` | 授予/撤销角色时，成员不存在、角色不存在、角色 inactive，或撤销未绑定角色。 | `member_id`, `role_code` |
+| `422` | `VALIDATION_ERROR` | 创建用户输入不合法或用户名/邮箱重复、添加非 active 用户、给 disabled / removed 成员授予角色、把 system role 绑定到项目成员。 | `username`, `email`, `user_id` 或 `member_id`, `role_code` |
+
+当前仍使用 FastAPI 默认 `detail` 的场景：
+
+| HTTP 状态码 | 场景 |
+|---:|---|
+| `401` | token 缺失、无效、过期，或当前用户不可用。 |
+| `403` | 缺少 `can_manage_system_users` 调用用户管理接口，或缺少 `can_manage_project_members` 调用项目成员管理接口。 |
+| `422` | 请求体缺少 `username` / `temporary_password` / `user_id` / `role_code`，或字段类型不符合 Pydantic schema。 |
+
+注意：项目成员管理接口当前通过 capability 判断权限；如果项目不存在或当前用户不是项目成员，通常表现为缺少 `can_manage_project_members` 并返回 `403`。
+
+---
+
+## 10. 当前错误响应约定
+
+M4 页面与标注 revision、M4a access 接口捕获的 service 层业务错误使用统一结构：
 
 ```json
 {
@@ -1208,25 +1714,28 @@ M4 页面与标注 revision 接口捕获的业务错误使用统一结构：
 | `400` | 请求内容可解析，但上传文件、存储或业务输入不符合要求。 |
 | `401` | 未登录、token 无效、token 过期或登录失败。 |
 | `403` | 已登录但缺少项目 capability，或用户状态不允许执行操作。 |
-| `404` | 项目、页面或 revision 不存在。 |
+| `404` | 用户、项目成员、角色、页面或 revision 不存在。 |
 | `409` | annotation revision 保存存在版本冲突。 |
 | `413` | 上传文件超过大小限制。 |
-| `422` | Pydantic 请求校验失败，或标注 JSON 业务校验失败。 |
+| `422` | Pydantic 请求校验失败、标注 JSON 业务校验失败，或访问管理业务输入非法。 |
 | `500` | 服务端内部错误、资产导入异常或标注 JSON 读写异常。 |
 
-M4 页面与标注 revision 接口当前使用的业务错误 code：
+当前已实现接口使用的业务错误 code：
 
 | code | HTTP 状态码 | 场景 |
 |---|---|---|
 | `PAGE_NOT_FOUND` | `404` | 页面不存在。 |
-| `ANNOTATION_REVISION_NOT_FOUND` | `404` | 指定 revision 不存在。 |
-| `VALIDATION_ERROR` | `422` | 标注 JSON、几何、read_order 或 relation 业务校验失败。 |
+| `ANNOTATION_REVISION_NOT_FOUND` | `404` | 页面还没有标注版本，或 revision 不存在。 |
+| `USER_NOT_FOUND` | `404` | 用户不存在。 |
+| `PROJECT_MEMBER_NOT_FOUND` | `404` | 项目成员不存在。 |
+| `ROLE_OR_MEMBER_NOT_FOUND` | `404` | 项目角色不存在、不可用，或成员未绑定要撤销的角色。 |
+| `VALIDATION_ERROR` | `422` | 标注 JSON、几何、read_order、relation 校验失败，或访问管理业务输入非法。 |
 | `REVISION_CONFLICT` | `409` | `base_revision_id` 缺失或不是当前 latest。 |
 | `STORAGE_ERROR` | `500` | 标注 JSON 文件写入或读取失败。 |
 
 ---
 
-## 10. 当前限制与后续收敛点
+## 11. 当前限制与后续收敛点
 
 ```text
 1. 当前 project_id 仍使用内部数据库主键，后续如果需要公开项目编号，应整体收敛 API 和权限校验。
@@ -1238,20 +1747,21 @@ M4 页面与标注 revision 接口当前使用的业务错误 code：
 7. 当前页面图片签名 URL 已绑定 user_id 和 nonce，并在 raw 端点校验当前用户权限与 nonce 防重放；但 nonce 目前使用进程内缓存，后续多实例部署时需要切到共享缓存。
 8. 当前 Cookie 会话尚未实现专用 CSRF token 或双提交校验；生产部署前必须补齐 CSRF 防护，或保持同源 SameSite 策略并在安全文档中明确边界。
 9. 当前项目、标签、capabilities、revision 列表和 QC 列表等接口尚未统一 `{data, request_id}` 响应包装，前端需要逐接口适配，后续应按 backend_development_spec.md 收敛。
-10. 当前认证、权限和 Pydantic 请求校验错误尚未统一包装 request_id；M4 页面与标注 revision 的业务错误已统一。
-11. 当前接口文档不替代自动生成的 OpenAPI；字段变化时两者都需要核对。
-12. 当前 `DELETE /projects/{project_id}` 仅是临时实现；虽然已补 409 关联数据保护，但仍是物理删除，且未补软删除和审计日志，新前端不应依赖。
+10. 当前认证、权限和 Pydantic 请求校验错误尚未统一包装 request_id；M4 页面与标注 revision、M4a access 的 service 层业务错误已统一。
+11. M4a 当前实现用户创建、基础查询和禁用，不包含用户启用或密码重置；首次改密标记已落库，但改密流程仍待后续阶段实现。
+12. 当前接口文档不替代自动生成的 OpenAPI；字段变化时两者都需要核对。
+13. 当前 `DELETE /projects/{project_id}` 仅是临时实现；虽然已补 409 关联数据保护，但仍是物理删除，且未补软删除和审计日志，新前端不应依赖。
 ```
 
 ---
 
-## 11. 维护规则
+## 12. 维护规则
 
 ```text
 1. 新增、删除或修改后端 endpoint 时，必须同步更新本文。
 2. 如果接口只处于规划阶段，不写入“接口总览”的已实现列表，应写入后端设计文档。
 3. 如果 schema 字段变化，必须同步更新请求示例、响应示例和字段说明。
 4. 如果权限 capability 变化，必须同步更新“全局约定”和具体接口章节。
-5. 如果错误响应结构统一改造，需要同步更新第 9 章。
+5. 如果错误响应结构统一改造，需要同步更新第 10 章。
 6. 如果后端 API 文档路径变化，需要同步更新 doc/开发文档/后端/INDEX.md。
 ```
