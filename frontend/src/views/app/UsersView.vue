@@ -62,11 +62,14 @@ function isCurrentUser(targetUser: SystemUser) {
   return targetUser.id === currentUser.value?.id
 }
 
+const lastActiveAdminIds = computed(() => {
+  const activeAdmins = users.value.filter(u => u.is_system_admin && u.status === 'active')
+  if (activeAdmins.length !== 1) return new Set<string>()
+  return new Set<string>([activeAdmins[0].id])
+})
+
 function isLastActiveSystemAdmin(targetUser: SystemUser) {
-  if (!targetUser.is_system_admin || targetUser.status !== 'active') {
-    return false
-  }
-  return users.value.filter(user => user.is_system_admin && user.status === 'active').length === 1
+  return lastActiveAdminIds.value.has(targetUser.id)
 }
 
 function getLocalizedError(error: unknown, fallbackKey: string): string {
@@ -173,13 +176,13 @@ function getProjectRoleText(roleCode: typeof PROJECT_ROLE_OPTIONS[number]) {
 }
 
 function toggleProjectRole(roleCode: typeof PROJECT_ROLE_OPTIONS[number], checked: boolean) {
-  const roleSet = new Set(form.value.project_role_codes)
-  if (checked) {
-    roleSet.add(roleCode)
-  } else {
-    roleSet.delete(roleCode)
+  const codes = form.value.project_role_codes
+  const idx = codes.indexOf(roleCode)
+  if (checked && idx === -1) {
+    codes.push(roleCode)
+  } else if (!checked && idx !== -1) {
+    codes.splice(idx, 1)
   }
-  form.value.project_role_codes = Array.from(roleSet)
 }
 
 function onProjectChange() {

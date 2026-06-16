@@ -102,11 +102,7 @@ def update_user(
     user = _get_user_or_404(db, user_id)
     before_json = _serialize_user(user)
 
-    if (
-        payload.is_system_admin is False
-        and user.id == current_user.id
-        and current_user.is_system_admin
-    ):
+    if payload.is_system_admin is False and user.id == current_user.id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="You cannot remove your own system administrator role.",
@@ -265,15 +261,14 @@ def _ensure_not_last_active_system_admin(
     if not target_user.is_system_admin or target_user.status != "active":
         return
 
-    remaining_admins = [
+    remaining = [
         user
         for user in db.scalars(select(User).where(User.deleted_at.is_(None))).all()
         if user.id != target_user.id
-        and user.deleted_at is None
         and user.is_system_admin
         and user.status == "active"
     ]
-    if remaining_admins:
+    if remaining:
         return
 
     raise HTTPException(
