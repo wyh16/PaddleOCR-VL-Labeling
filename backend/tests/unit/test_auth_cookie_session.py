@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from fastapi import Response
 
 from app.api.v1.endpoints import auth as auth_endpoint
@@ -8,9 +10,13 @@ from app.api.v1.endpoints import auth as auth_endpoint
 class DummyDb:
     def __init__(self, user: object | None):
         self._user = user
+        self.committed = False
 
     def scalar(self, _stmt: object):
         return self._user
+
+    def commit(self) -> None:
+        self.committed = True
 
 
 def test_login_sets_http_only_auth_cookie(monkeypatch) -> None:
@@ -25,6 +31,7 @@ def test_login_sets_http_only_auth_cookie(monkeypatch) -> None:
             "status": "active",
             "deleted_at": None,
             "is_system_admin": False,
+            "last_login_at": None,
         },
     )()
     db = DummyDb(user=user)
@@ -45,6 +52,9 @@ def test_login_sets_http_only_auth_cookie(monkeypatch) -> None:
     )
 
     assert result.user.username == "annotator"
+    assert db.committed is True
+    assert user.last_login_at is not None
+    assert user.last_login_at.tzinfo == UTC
     set_cookie = response.headers.get("set-cookie", "")
     assert "k12_access_token=cookie-token" in set_cookie
     assert "HttpOnly" in set_cookie

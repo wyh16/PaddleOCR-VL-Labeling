@@ -65,8 +65,14 @@ class AuditLog(Base):
         Text,
         comment="资源编号：优先记录对外展示的公开编号，内部排查场景可记录带前缀的内部编号。",
     )
-    before_json: Mapped[dict[str, Any] | None] = mapped_column(JSONB, comment="操作前快照 JSON。")
-    after_json: Mapped[dict[str, Any] | None] = mapped_column(JSONB, comment="操作后快照 JSON。")
+    before_json: Mapped[dict[str, Any] | None] = mapped_column(
+        JSONB(none_as_null=True),
+        comment="操作前快照 JSON。",
+    )
+    after_json: Mapped[dict[str, Any] | None] = mapped_column(
+        JSONB(none_as_null=True),
+        comment="操作后快照 JSON。",
+    )
     request_id: Mapped[str | None] = mapped_column(Text, comment="请求 ID。")
     ip_address: Mapped[str | None] = mapped_column(INET, comment="客户端 IP。")
     user_agent: Mapped[str | None] = mapped_column(Text, comment="User-Agent。")

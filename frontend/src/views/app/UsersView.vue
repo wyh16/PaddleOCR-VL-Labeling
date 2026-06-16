@@ -14,10 +14,12 @@ import {
   type SystemUser,
   type UpdateSystemUserRequest,
 } from '@/api'
+import { useAuth } from '@/composables/useAuth'
 import { BaseButton, BaseInput, BaseStatusBadge } from '@/components/base'
 import { ShieldCheck, UserPlus, UserCog, Search, RefreshCw } from 'lucide-vue-next'
 
 const { t } = useI18n()
+const { user: currentUser } = useAuth()
 
 const loading = ref(false)
 const projectsLoading = ref(false)
@@ -49,10 +51,23 @@ const form = ref({
 })
 
 const isEditMode = computed(() => editingUserId.value !== null)
+const editingUser = computed(() => users.value.find(user => user.id === editingUserId.value) ?? null)
+const isEditingSelf = computed(() => editingUserId.value !== null && editingUserId.value === currentUser.value?.id)
 const submitButtonText = computed(() => (
   isEditMode.value ? t('users.actions.updateUser') : t('users.actions.createUser')
 ))
 const pageDescription = computed(() => t('users.description'))
+
+function isCurrentUser(targetUser: SystemUser) {
+  return targetUser.id === currentUser.value?.id
+}
+
+function isLastActiveSystemAdmin(targetUser: SystemUser) {
+  if (!targetUser.is_system_admin || targetUser.status !== 'active') {
+    return false
+  }
+  return users.value.filter(user => user.is_system_admin && user.status === 'active').length === 1
+}
 
 function getLocalizedError(error: unknown, fallbackKey: string): string {
   if (error instanceof ApiClientError) {
@@ -133,6 +148,26 @@ function getStatusVariant(status: SystemUser['status']) {
   return 'info'
 }
 
+function formatDateTime(value: string) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) {
+    return value.replace('T', ' ').replace(/\.\d+$/, '')
+  }
+  const pad2 = (input: number) => String(input).padStart(2, '0')
+  const year = date.getFullYear()
+  const month = pad2(date.getMonth() + 1)
+  const day = pad2(date.getDate())
+  const hour = pad2(date.getHours())
+  const minute = pad2(date.getMinutes())
+  const second = pad2(date.getSeconds())
+  return `${year}-${month}-${day} ${hour}:${minute}:${second}`
+}
+
+function formatLastLoginAt(value: SystemUser['last_login_at']) {
+  if (!value) return t('users.neverLoggedIn')
+  return formatDateTime(value)
+}
+
 function getProjectRoleText(roleCode: typeof PROJECT_ROLE_OPTIONS[number]) {
   return t(`users.projectRoles.${roleCode}`)
 }
@@ -159,6 +194,14 @@ async function submitForm() {
   successMessage.value = ''
   try {
     if (isEditMode.value) {
+      if (isEditingSelf.value && form.value.role !== 'system_admin') {
+        errorMessage.value = t('users.messages.selfDemotionForbidden')
+        return
+      }
+      if (editingUser.value && isLastActiveSystemAdmin(editingUser.value) && form.value.role !== 'system_admin') {
+        errorMessage.value = t('users.messages.lastAdminProtected')
+        return
+      }
       const payload: UpdateSystemUserRequest = {
         display_name: form.value.display_name.trim(),
         email: form.value.email.trim() || null,
@@ -201,6 +244,16 @@ async function submitForm() {
 }
 
 async function toggleUserStatus(user: SystemUser) {
+  if (isCurrentUser(user) && user.status !== 'disabled') {
+    errorMessage.value = t('users.messages.selfDisableForbidden')
+    successMessage.value = ''
+    return
+  }
+  if (isLastActiveSystemAdmin(user) && user.status !== 'disabled') {
+    errorMessage.value = t('users.messages.lastAdminProtected')
+    successMessage.value = ''
+    return
+  }
   actionUserId.value = user.id
   errorMessage.value = ''
   successMessage.value = ''
@@ -242,15 +295,6 @@ onMounted(() => {
         </div>
       </div>
 
-      <div v-if="errorMessage"
-        class="mb-4 rounded-lg border border-danger/20 bg-danger-bg px-4 py-3 text-caption text-danger">
-        {{ errorMessage }}
-      </div>
-      <div v-if="successMessage"
-        class="mb-4 rounded-lg border border-success/20 bg-success/10 px-4 py-3 text-caption text-success">
-        {{ successMessage }}
-      </div>
-
       <div class="grid gap-6 xl:grid-cols-[380px_minmax(0,1fr)]">
         <section class="rounded-lg border border-border bg-surface p-5">
           <div class="mb-4 flex items-center gap-2">
@@ -288,11 +332,20 @@ onMounted(() => {
             <div>
               <label class="mb-1 block text-caption font-medium text-text">{{ t('users.fields.role') }}</label>
               <select v-model="form.role"
-                class="h-9 w-full rounded-md border border-border bg-surface px-3 text-caption text-text focus:outline-none focus:ring-2 focus:ring-focus">
-                <option value="user">{{ t('users.roles.user') }}</option>
+                class="h-9 w-full rounded-md border border-border bg-surface px-3 text-caption text-text focus:outline-none focus:ring-2 focus:ring-focus"
+                :disabled="isEditingSelf">
+                <option value="user"
+                  :disabled="isEditingSelf || !!(editingUser && isLastActiveSystemAdmin(editingUser))">
+                  {{ t('users.roles.user') }}</option>
                 <option value="system_admin">{{ t('users.roles.systemAdmin') }}</option>
               </select>
               <p class="mt-1 text-micro text-text-muted">{{ t('users.roleHint') }}</p>
+              <p v-if="isEditingSelf" class="mt-1 text-micro text-warning">
+                {{ t('users.selfRoleHint') }}
+              </p>
+              <p v-else-if="editingUser && isLastActiveSystemAdmin(editingUser)" class="mt-1 text-micro text-warning">
+                {{ t('users.lastAdminHint') }}
+              </p>
             </div>
 
             <div>
@@ -331,6 +384,15 @@ onMounted(() => {
               </BaseButton>
             </div>
           </form>
+
+          <div v-if="errorMessage"
+            class="mt-4 rounded-lg border border-danger/20 bg-danger-bg px-4 py-3 text-caption text-danger">
+            {{ errorMessage }}
+          </div>
+          <div v-if="successMessage"
+            class="mt-4 rounded-lg border border-success/20 bg-success/10 px-4 py-3 text-caption text-success">
+            {{ successMessage }}
+          </div>
         </section>
 
         <section class="rounded-lg border border-border bg-surface p-5">
@@ -383,7 +445,7 @@ onMounted(() => {
               <div class="min-w-0">
                 <div class="truncate text-text">{{ user.display_name }}</div>
                 <div class="truncate text-text-muted">
-                  {{ user.last_login_at ? user.last_login_at : t('users.neverLoggedIn') }}
+                  {{ formatLastLoginAt(user.last_login_at) }}
                 </div>
               </div>
 
@@ -402,7 +464,9 @@ onMounted(() => {
                   {{ t('users.actions.editUser') }}
                 </BaseButton>
                 <BaseButton type="button" :variant="user.status === 'disabled' ? 'primary' : 'danger'" size="sm"
-                  :loading="actionUserId === user.id" @click="toggleUserStatus(user)">
+                  :loading="actionUserId === user.id"
+                  :disabled="(isCurrentUser(user) || isLastActiveSystemAdmin(user)) && user.status !== 'disabled'"
+                  @click="toggleUserStatus(user)">
                   {{ user.status === 'disabled' ? t('users.actions.enableUser') : t('users.actions.disableUser') }}
                 </BaseButton>
               </div>

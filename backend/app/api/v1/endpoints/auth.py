@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -39,6 +41,9 @@ def login(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid username or password.",
         )
+
+    user.last_login_at = datetime.now(UTC)
+    db.commit()
 
     settings = get_settings()
     access_token = create_access_token(user_id=user.id)

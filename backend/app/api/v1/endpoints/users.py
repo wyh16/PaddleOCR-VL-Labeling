@@ -102,6 +102,22 @@ def update_user(
     user = _get_user_or_404(db, user_id)
     before_json = _serialize_user(user)
 
+    if (
+        payload.is_system_admin is False
+        and user.id == current_user.id
+        and current_user.is_system_admin
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You cannot remove your own system administrator role.",
+        )
+    if payload.is_system_admin is False:
+        _ensure_not_last_active_system_admin(
+            db=db,
+            target_user=user,
+            detail="At least one active system administrator must remain.",
+        )
+
     if payload.display_name is not None:
         user.display_name = payload.display_name
     if payload.email is not None:
@@ -143,6 +159,16 @@ def disable_user(
 ) -> UserOut:
     _ensure_system_admin(current_user)
     user = _get_user_or_404(db, user_id)
+    if user.id == current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You cannot disable your own account.",
+        )
+    _ensure_not_last_active_system_admin(
+        db=db,
+        target_user=user,
+        detail="At least one active system administrator must remain.",
+    )
     before_json = _serialize_user(user)
     user.status = "disabled"
     _append_audit_log(
@@ -230,6 +256,32 @@ def _append_audit_log(
     )
 
 
+def _ensure_not_last_active_system_admin(
+    *,
+    db: Session,
+    target_user: User,
+    detail: str,
+) -> None:
+    if not target_user.is_system_admin or target_user.status != "active":
+        return
+
+    remaining_admins = [
+        user
+        for user in db.scalars(select(User).where(User.deleted_at.is_(None))).all()
+        if user.id != target_user.id
+        and user.deleted_at is None
+        and user.is_system_admin
+        and user.status == "active"
+    ]
+    if remaining_admins:
+        return
+
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail=detail,
+    )
+
+
 def _upsert_project_assignment(
     *,
     db: Session,
@@ -307,7 +359,11 @@ def _upsert_project_assignment(
         )
     ).all()
     available_roles_by_code = {role.code: role for role in available_roles}
-    unknown_role_codes = [role_code for role_code in role_codes if role_code not in available_roles_by_code]
+    unknown_role_codes = [
+        role_code
+        for role_code in role_codes
+        if role_code not in available_roles_by_code
+    ]
     if unknown_role_codes:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -320,7 +376,9 @@ def _upsert_project_assignment(
             MemberRoleBinding.status == "active",
         )
     ).all()
-    active_bindings_by_role_id = {binding.role_id: binding for binding in active_bindings}
+    active_bindings_by_role_id = {
+        binding.role_id: binding for binding in active_bindings
+    }
     desired_role_ids = {role.id for role in available_roles}
     now = datetime.now(UTC)
 

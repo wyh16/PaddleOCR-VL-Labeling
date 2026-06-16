@@ -123,10 +123,14 @@ def test_list_users_returns_visible_users() -> None:
     assert body["items"][1]["is_system_admin"] is True
 
 
-def test_create_user_supports_assigning_system_admin_role(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_create_user_supports_assigning_system_admin_role(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     db = FakeDb()
     app = create_test_app(db, build_user(user_id=1, is_system_admin=True))
-    monkeypatch.setattr(users_endpoint, "hash_password", lambda password: f"hashed::{password}")
+    monkeypatch.setattr(
+        users_endpoint, "hash_password", lambda password: f"hashed::{password}"
+    )
 
     response = request(
         app,
@@ -170,4 +174,80 @@ def test_enable_user_updates_status() -> None:
 
     assert response.status_code == 200
     assert response.json()["status"] == "active"
+    assert target_user.status == "active"
+
+
+def test_system_admin_cannot_demote_self() -> None:
+    current_user = build_user(user_id=1, is_system_admin=True, status="active")
+    db = FakeDb(users=[current_user])
+    app = create_test_app(db, current_user)
+
+    response = request(
+        app,
+        "PATCH",
+        "/api/v1/users/1",
+        json={
+            "display_name": current_user.display_name,
+            "is_system_admin": False,
+        },
+    )
+
+    assert response.status_code == 400
+    assert (
+        response.json()["detail"]
+        == "You cannot remove your own system administrator role."
+    )
+    assert current_user.is_system_admin is True
+
+
+def test_system_admin_cannot_disable_self() -> None:
+    current_user = build_user(user_id=1, is_system_admin=True, status="active")
+    db = FakeDb(users=[current_user])
+    app = create_test_app(db, current_user)
+
+    response = request(app, "POST", "/api/v1/users/1/disable")
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "You cannot disable your own account."
+    assert current_user.status == "active"
+
+
+def test_cannot_demote_last_active_system_admin() -> None:
+    current_user = build_user(user_id=1, is_system_admin=True, status="disabled")
+    target_user = build_user(user_id=2, is_system_admin=True, status="active")
+    db = FakeDb(users=[target_user, current_user])
+    app = create_test_app(db, current_user)
+
+    response = request(
+        app,
+        "PATCH",
+        "/api/v1/users/2",
+        json={
+            "display_name": target_user.display_name,
+            "is_system_admin": False,
+        },
+    )
+
+    assert response.status_code == 400
+    assert (
+        response.json()["detail"]
+        == "At least one active system administrator must remain."
+    )
+    assert target_user.is_system_admin is True
+
+
+def test_cannot_disable_last_active_system_admin() -> None:
+    current_user = build_user(user_id=1, is_system_admin=True, status="disabled")
+    target_user = build_user(user_id=2, is_system_admin=True, status="active")
+    other_admin = build_user(user_id=3, is_system_admin=True, status="pending")
+    db = FakeDb(users=[target_user, other_admin, current_user])
+    app = create_test_app(db, current_user)
+
+    response = request(app, "POST", "/api/v1/users/2/disable")
+
+    assert response.status_code == 400
+    assert (
+        response.json()["detail"]
+        == "At least one active system administrator must remain."
+    )
     assert target_user.status == "active"
