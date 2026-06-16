@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -25,6 +26,7 @@ class FakeDb:
         self._commit_raises_integrity_error = commit_raises_integrity_error
         self.deleted_objects: list[object] = []
         self.committed = False
+        self.refreshed_objects: list[object] = []
         self.rolled_back = False
 
     def get(self, model: object, _id: object) -> object | None:
@@ -42,11 +44,15 @@ class FakeDb:
             raise IntegrityError("COMMIT", {}, None)
         self.committed = True
 
+    def refresh(self, obj: object) -> None:
+        self.refreshed_objects.append(obj)
+
     def rollback(self) -> None:
         self.rolled_back = True
 
 
 def _project_row(*, created_by: int = 99) -> object:
+    now = datetime.now(UTC)
     return type(
         "ProjectRow",
         (),
@@ -56,17 +62,26 @@ def _project_row(*, created_by: int = 99) -> object:
             "description": None,
             "schema_version": "v1",
             "created_by": created_by,
+            "created_at": now,
+            "updated_at": now,
         },
     )()
 
 
-def create_test_app(monkeypatch: Any, db: FakeDb, *, current_user_id: int = 99):
+def create_test_app(
+    monkeypatch: Any,
+    db: FakeDb,
+    *,
+    current_user_id: int = 99,
+    is_system_admin: bool = False,
+):
     app = create_app()
     app.dependency_overrides[projects_endpoint.get_current_user] = lambda: User(
         id=current_user_id,
         username="project-owner",
         display_name="项目创建者",
         status="active",
+        is_system_admin=is_system_admin,
     )
     app.dependency_overrides[projects_endpoint.get_db_session] = lambda: db
     return app
@@ -104,6 +119,23 @@ def test_non_owner_cannot_delete_project(monkeypatch: Any) -> None:
 
     assert response.status_code == 403
     assert response.json()["detail"] == "Access denied"
+
+
+def test_system_admin_can_delete_project_created_by_other_user(monkeypatch: Any) -> None:
+    project = _project_row(created_by=99)
+    db = FakeDb(project=project)
+    app = create_test_app(
+        monkeypatch,
+        db,
+        current_user_id=101,
+        is_system_admin=True,
+    )
+
+    response = request(app, "DELETE", "/api/v1/projects/10")
+
+    assert response.status_code == 204
+    assert db.deleted_objects == [project]
+    assert db.committed is True
 
 
 def test_delete_unknown_project_returns_404(monkeypatch: Any) -> None:
@@ -150,3 +182,29 @@ def test_delete_project_with_commit_integrity_error_returns_409(
     assert db.deleted_objects == [project]
     assert db.committed is False
     assert db.rolled_back is True
+
+
+def test_system_admin_can_update_project_created_by_other_user(
+    monkeypatch: Any,
+) -> None:
+    project = _project_row(created_by=99)
+    db = FakeDb(project=project)
+    app = create_test_app(
+        monkeypatch,
+        db,
+        current_user_id=101,
+        is_system_admin=True,
+    )
+
+    response = request(
+        app,
+        "PATCH",
+        "/api/v1/projects/10",
+        json={"name": "updated-project"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["name"] == "updated-project"
+    assert project.name == "updated-project"
+    assert db.committed is True
+    assert db.refreshed_objects == [project]
