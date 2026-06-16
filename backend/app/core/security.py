@@ -24,6 +24,7 @@ from app.db.session import get_db_session
 JWT_ALGORITHM = "HS256"
 PASSWORD_HASH_ALGORITHM = "pbkdf2_sha256"
 PASSWORD_HASH_ITERATIONS = 210_000
+SYSTEM_ADMIN_CAPABILITIES = frozenset({"can_manage_system_users"})
 
 # 关闭 FastAPI 默认的 403 映射，让缺失或非法 Bearer 凭证统一落到
 # API 明确约定的 401 认证失败边界。
@@ -225,6 +226,30 @@ def ensure_project_capability(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Permission denied.",
         )
+
+
+def ensure_system_capability(user: User, *, capability: str) -> None:
+    """校验系统级能力；MVP 阶段能力只从系统管理员身份推导。"""
+
+    capabilities = get_system_capabilities(user)
+    if capability not in capabilities:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Permission denied.",
+        )
+
+
+def get_system_capabilities(user: User) -> set[str]:
+    """返回当前用户的系统级能力集合。
+
+    MVP 暂不引入系统级角色绑定表；只有 active 且 is_system_admin=true
+    的用户会获得系统用户管理能力。后续新增 user_admin 一类角色时，
+    应只扩展这里的事实来源，不改变 API 的 capability 语义。
+    """
+
+    if user.status != "active" or not user.is_system_admin:
+        return set()
+    return set(SYSTEM_ADMIN_CAPABILITIES)
 
 
 def get_project_capabilities(db: Session, *, user_id: int, project_id: int) -> set[str]:
