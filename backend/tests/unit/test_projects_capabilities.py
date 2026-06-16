@@ -137,7 +137,7 @@ def test_list_projects_includes_member_visible_projects(
         )(),
     ]
     db = DummyProjectListDb(projects)
-    current_user = type("User", (), {"id": 1})()
+    current_user = type("User", (), {"id": 1, "is_system_admin": False})()
 
     monkeypatch.setattr(
         projects_endpoint,
@@ -169,7 +169,7 @@ def test_get_project_allows_member_with_can_view_project(
         },
     )()
     db = DummyDb(project=project)
-    current_user = type("User", (), {"id": 1})()
+    current_user = type("User", (), {"id": 1, "is_system_admin": False})()
     seen: list[tuple[int, int, str]] = []
 
     def fake_ensure(
