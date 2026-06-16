@@ -161,7 +161,7 @@ def test_access_endpoint_requires_authentication() -> None:
     response = client.get("/api/v1/projects/10/members")
 
     assert response.status_code == 401
-    assert response.json()["detail"] == "Missing bearer token."
+    assert response.json()["detail"] == "Missing authentication token."
 
 
 def test_non_system_admin_cannot_manage_users(monkeypatch: Any) -> None:
