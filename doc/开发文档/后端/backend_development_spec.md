@@ -1,7 +1,7 @@
 # 文档标注平台后端开发规范
 
-版本：v0.7
-日期：2026-06-03
+版本：v0.8
+日期：2026-06-15
 参考：
 
 ```text
@@ -94,6 +94,7 @@ doc/PaddleOCR技术文档/paddleocr_vl_official_reference.md
 | v0.5 | 2026-05-26 | 补充角色与权限实现规范：后端基于 user_id + project_id 计算 capabilities，角色变更必须审计，前端角色仅作展示。 |
 | v0.6 | 2026-05-29 | 新增后端代码注释规范，明确何时必须写注释、注释内容要求和禁止项。 |
 | v0.7 | 2026-06-03 | 收紧中文提交信息、中文注释、中文日志 message 和中文错误文案要求，统一引用提交规范文档。 |
+| v0.8 | 2026-06-15 | 补充 `can_manage_system_users` 管理员创建用户的安全边界：默认不开放自助注册、密码不落日志、创建用户必须审计。 |
 
 ---
 
@@ -949,7 +950,10 @@ MVP 使用 JWT。
 4. locked 数据修改必须校验 project_admin 或等价 capability。
 5. JWT 必须设置过期时间，禁止长期不过期 token。
 6. 刷新 token、退出登录、密码修改后应支持 token 失效。
-7. 后续生产环境优先接入组织级 SSO / OAuth2 / OIDC。
+7. 平台默认不开放用户自助注册；系统用户由具备 `can_manage_system_users` 的管理员创建、导入、禁用或维护。
+8. 管理员创建用户时，temporary_password 只允许作为请求输入参与哈希，禁止写入日志、审计 details、错误消息或响应体。
+9. 管理员创建或重置密码后的用户应进入 password_must_change 或等价首次改密状态。
+10. 后续生产环境优先接入组织级 SSO / OAuth2 / OIDC。
 ```
 
 角色与权限实现要求：
@@ -958,11 +962,12 @@ MVP 使用 JWT。
 1. 后端不得信任前端传入的 role、capability 或 is_admin 字段。
 2. 每个项目内操作都必须基于 authenticated user_id + project_id 计算 capabilities。
 3. 项目级权限来自 project_members、member_role_bindings 和 role_registry。
-4. system_admin 只用于系统级用户管理和紧急维护，不默认拥有所有项目业务操作。
+4. 用户管理接口统一检查 `can_manage_system_users`；MVP 阶段该 capability 由 `is_system_admin=true` 推导，不默认拥有所有项目业务操作。
 5. 前端可展示 role_key，但写接口必须以后端 capability 校验为准。
-6. 角色授予、撤销、成员禁用、成员移除、锁定、回滚、导出下载必须写 audit_log。
-7. 禁用用户或移除成员后，不应破坏历史 created_by、reviewer_id、export created_by 的可追溯性。
-8. 权限不足返回 403，不在错误详情中暴露敏感资源是否存在。
+6. 创建用户、禁用用户、角色授予、撤销、成员禁用、成员移除、锁定、回滚、导出下载必须写 audit_log。
+7. project_admin 不能创建系统用户，只能管理自己项目内已有用户的成员关系和项目角色。
+8. 禁用用户或移除成员后，不应破坏历史 created_by、reviewer_id、export created_by 的可追溯性。
+9. 权限不足返回 403，不在错误详情中暴露敏感资源是否存在。
 ```
 
 ### 14.2 传输加密与防抓包
