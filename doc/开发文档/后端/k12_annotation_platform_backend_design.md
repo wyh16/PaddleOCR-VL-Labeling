@@ -1,7 +1,7 @@
 # 文档数据采集与标注平台后端设计文档
 
-版本：v0.9
-日期：2026-06-03
+版本：v0.10
+日期：2026-06-15
 依据文档：
 
 ```text
@@ -108,6 +108,7 @@ k12_exam_paper_requirements_eval_focused.md
 | v0.7 | 2026-05-27 | 收紧 page 字段语义：`pages.id` 为内部主键，API path 使用公开 id，数据库外键命名必须避免公开 id 与内部主键混淆。 |
 | v0.8 | 2026-06-01 | 数据库公开稳定编号统一改为 `public_id`，内部外键恢复 `<entity>_id` 命名；API path 中的 `{page_id}` 仍表示页面公开编号并解析到 `pages.public_id`。 |
 | v0.9 | 2026-06-03 | 明确后端代码目录与当前 M2 文件职责，ORM 模型统一放入 `app/db/models`。 |
+| v0.10 | 2026-06-15 | 明确内网私有部署默认不开放自助注册，补充 `can_manage_system_users` 创建系统用户的后端设计、审计和 MVP 边界。 |
 
 ---
 
@@ -482,6 +483,7 @@ username
 email
 display_name
 password_hash
+password_must_change
 status                active / disabled / pending
 is_system_admin
 last_login_at
@@ -496,8 +498,12 @@ deleted_at
 username 唯一。
 email 建唯一索引，可为空但一旦填写必须唯一。
 password_hash 不可返回给前端。
+password_must_change 表示管理员创建或重置密码后，用户下次登录必须修改密码。
 disabled 用户不能登录，也不能创建新任务。
-is_system_admin 只用于系统级初始化、全局用户管理和紧急维护，不替代项目内角色。
+is_system_admin 是 MVP 阶段推导系统级 capability 的身份标记，不替代项目内角色。
+默认不开放用户自助注册；MVP 用户由具备 can_manage_system_users 的管理员通过后台 API 创建，或由受控导入流程创建。
+project_admin 不能创建系统用户，只能把已有 active 用户加入自己有权限管理的项目。
+创建用户必须写 audit_logs，action=user.create，resource_type=user；审计日志不得记录明文密码或 password_hash。
 ```
 
 ### 7.3 role_registry
@@ -1026,6 +1032,47 @@ PUT  /api/projects/{project_id}/members/{member_id}/roles
 GET  /api/projects/{project_id}/me/capabilities
 ```
 
+用户创建接口：
+
+```http
+POST /api/users
+Authorization: Bearer <access_token>
+Content-Type: application/json
+```
+
+权限：
+
+```text
+仅允许具备系统级 `can_manage_system_users` 的当前用户调用。
+MVP 阶段该 capability 由 `is_system_admin=true` 推导；后续可扩展为系统级角色绑定。
+该接口是管理员开户接口，不是公开注册接口。
+```
+
+请求体：
+
+```json
+{
+  "username": "annotator01",
+  "display_name": "标注员 01",
+  "email": null,
+  "temporary_password": "change-me-on-first-login",
+  "is_system_admin": false
+}
+```
+
+请求规则：
+
+```text
+1. username 必须唯一，且只能使用后端白名单允许的字符集。
+2. email 可为空；填写时必须唯一且格式合法。
+3. temporary_password 只用于本次创建请求，后端只保存 password_hash。
+4. 创建普通实验室成员时 is_system_admin 必须为 false；授予 system_admin 应限制为初始化或少量管理员维护流程。
+5. 创建后默认 status=active，password_must_change=true。
+6. 响应体不得返回 temporary_password 或 password_hash。
+7. 创建成功必须写 audit_logs，action=user.create，resource_type=user。
+8. 用户创建后还不能自动访问任何项目，必须通过 project_members 和项目角色授予访问权限。
+```
+
 角色：
 
 ```text
@@ -1046,8 +1093,9 @@ viewer
 3. member_role_bindings 决定用户在该项目内拥有的项目角色。
 4. 一个用户可在不同项目拥有不同角色。
 5. 前端应优先消费 capabilities，不直接根据角色 code 自行推断是否可操作。
-6. 角色授予、撤销、成员禁用、成员移除必须写 audit_logs。
-7. system_admin 只能做系统级用户初始化和全局维护；普通项目操作仍应通过项目成员角色校验。
+6. 用户创建、用户禁用、角色授予、撤销、成员禁用、成员移除必须写 audit_logs。
+7. 系统用户管理接口统一检查 `can_manage_system_users`；MVP 阶段该 capability 由 `is_system_admin=true` 推导。
+8. 平台默认不提供公开自助注册；如果未来开放注册，必须先补充部署配置、审批、审计和默认项目隔离规则。
 ```
 
 ### 9.2 项目与配置
@@ -1534,13 +1582,13 @@ project_admin
   管理本项目标签、关系、项目成员、锁定数据、回滚 revision。
 
 system_admin
-  管理系统用户、初始化全局角色、处理跨项目紧急维护。
+  创建、禁用和维护系统用户，初始化全局角色，处理跨项目紧急维护。
 ```
 
 角色作用域：
 
 ```text
-system_admin 是系统级角色，不绑定具体项目。
+system_admin 是系统级角色，不绑定具体项目；MVP 阶段 `is_system_admin=true` 会推导 `can_manage_system_users`。
 viewer / annotator / reviewer / data_manager / exporter / project_admin 都是项目级角色。
 一个用户可以在 A 项目是 reviewer，在 B 项目是 viewer。
 同一个项目成员可以同时拥有多个项目级角色，例如 data_manager + annotator。
@@ -1594,7 +1642,8 @@ MVP 权限矩阵：
 2. 前端隐藏或禁用按钮只是用户体验，不作为安全边界。
 3. locked / eval locked 数据的修改必须叠加锁定规则校验。
 4. 导出和下载必须同时校验角色、数据 split、锁定状态和 download token。
-5. 角色变更不能影响历史 created_by、reviewer_id、export created_by 的可追溯性。
+5. 用户创建、禁用和角色变更不能影响历史 created_by、reviewer_id、export created_by 的可追溯性。
+6. 管理员创建用户后，该用户默认没有项目数据访问权，必须再由 project_admin 或等价 capability 添加为项目成员并授予项目角色。
 ```
 
 ### 13.2 锁定规则
@@ -1716,7 +1765,7 @@ request_id
 5. annotation revision 整页保存和读取。
 6. label_registry 内置 PP-DocLayoutV3 25 类，并支持按 scenario_profile 加载场景扩展类。
 7. 基础 schema / geometry QC。
-8. 基础登录、项目成员、角色绑定和 capabilities API。
+8. 基础登录、`can_manage_system_users` 创建/禁用用户、项目成员、角色绑定和 capabilities API。
 ```
 
 ### 17.2 第二阶段

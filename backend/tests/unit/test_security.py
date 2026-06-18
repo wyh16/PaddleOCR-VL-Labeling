@@ -11,6 +11,7 @@ from fastapi import Depends, FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
 from app.core import security
+from app.db.models import User
 
 
 def test_password_hash_verification() -> None:
@@ -180,3 +181,49 @@ def test_ensure_project_capability_merges_active_role_capabilities() -> None:
         project_id=1,
         capability="can_upload_assets",
     )
+
+
+def test_get_system_capabilities_derives_user_management_from_system_admin() -> None:
+    user = User(
+        id=1,
+        username="admin",
+        display_name="管理员",
+        status="active",
+        is_system_admin=True,
+    )
+
+    capabilities = security.get_system_capabilities(user)
+
+    assert capabilities == {"can_manage_system_users"}
+
+
+@pytest.mark.parametrize(
+    "user",
+    [
+        User(
+            id=2,
+            username="normal_user",
+            display_name="普通用户",
+            status="active",
+            is_system_admin=False,
+        ),
+        User(
+            id=3,
+            username="disabled_admin",
+            display_name="停用管理员",
+            status="disabled",
+            is_system_admin=True,
+        ),
+    ],
+)
+def test_ensure_system_capability_denies_missing_user_management_capability(
+    user: User,
+) -> None:
+    with pytest.raises(HTTPException) as exc_info:
+        security.ensure_system_capability(
+            user,
+            capability="can_manage_system_users",
+        )
+
+    assert exc_info.value.status_code == 403
+    assert exc_info.value.detail == "Permission denied."

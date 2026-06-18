@@ -54,6 +54,12 @@ class User(TimestampMixin, Base):
         Text,
         comment="密码哈希：不得明文保存，不得返回前端。",
     )
+    password_must_change: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        server_default=text("true"),
+        comment="是否要求下次登录后修改密码：管理员创建或重置密码后应为 true。",
+    )
     status: Mapped[str] = mapped_column(
         Text,
         nullable=False,

@@ -36,6 +36,12 @@ PROJECT_CREATED_BY_MIGRATION_PATH = (
     / "versions"
     / "20260609_0005_add_project_created_by.py"
 )
+USER_PASSWORD_FLAG_MIGRATION_PATH = (
+    BACKEND_ROOT
+    / "alembic"
+    / "versions"
+    / "20260615_0004_add_user_password_must_change.py"
+)
 SCHEMA_SQL_PATH = BACKEND_ROOT / "sql" / "schema" / "001_create_core_tables.sql"
 
 
@@ -176,6 +182,7 @@ def test_post_m2_migration_file_metadata_uses_linear_revision_chain() -> None:
     seed_source = SEED_ADMIN_MIGRATION_PATH.read_text(encoding="utf-8")
     relax_source = RELAX_ANNOTATION_OBJECTS_MIGRATION_PATH.read_text(encoding="utf-8")
     created_by_source = PROJECT_CREATED_BY_MIGRATION_PATH.read_text(encoding="utf-8")
+    password_flag_source = USER_PASSWORD_FLAG_MIGRATION_PATH.read_text(encoding="utf-8")
 
     assert 'revision: str = "20260608_0003"' in seed_source
     assert 'down_revision: str | None = "20260603_0002"' in seed_source
@@ -183,6 +190,8 @@ def test_post_m2_migration_file_metadata_uses_linear_revision_chain() -> None:
     assert 'down_revision: str | None = "20260608_0003"' in relax_source
     assert 'revision: str = "20260609_0005"' in created_by_source
     assert 'down_revision: str | None = "20260608_0004"' in created_by_source
+    assert 'revision: str = "20260615_0004"' in password_flag_source
+    assert 'down_revision: str | None = "20260609_0005"' in password_flag_source
 
 
 def test_post_m2_migrations_have_single_head_and_expected_order() -> None:
@@ -190,10 +199,11 @@ def test_post_m2_migrations_have_single_head_and_expected_order() -> None:
     config.set_main_option("script_location", str(ALEMBIC_ROOT))
     script = ScriptDirectory.from_config(config)
 
-    assert script.get_heads() == ["20260609_0005"]
+    assert script.get_heads() == ["20260615_0004"]
     assert script.get_revision("20260608_0003").down_revision == "20260603_0002"
     assert script.get_revision("20260608_0004").down_revision == "20260608_0003"
     assert script.get_revision("20260609_0005").down_revision == "20260608_0004"
+    assert script.get_revision("20260615_0004").down_revision == "20260609_0005"
 
 
 def test_project_created_by_migration_avoids_hard_coded_admin_id() -> None:
@@ -259,3 +269,13 @@ def test_project_created_by_migration_fails_when_admin_user_missing(
         assert "requires an existing admin user" in str(exc)
     else:
         raise AssertionError("Expected RuntimeError when admin user is missing")
+
+
+def test_user_password_must_change_migration_adds_explicit_first_login_flag() -> None:
+    source = USER_PASSWORD_FLAG_MIGRATION_PATH.read_text(encoding="utf-8")
+
+    assert 'revision: str = "20260615_0004"' in source
+    assert 'down_revision: str | None = "20260609_0005"' in source
+    assert '"users"' in source
+    assert '"password_must_change"' in source
+    assert "server_default=sa.text(\"true\")" in source
