@@ -15,6 +15,7 @@ const baseProps = {
   selected: true,
   labelName: 'question_block',
   activeTool: 'select' as const,
+  panActive: false,
 }
 
 describe('BBoxOverlay', () => {
@@ -35,5 +36,22 @@ describe('BBoxOverlay', () => {
     })
 
     expect(wrapper.findAll('rect')).toHaveLength(2)
+  })
+
+  it('临时平移激活时不触发选择和拖拽事件', async () => {
+    const wrapper = mount(BBoxOverlay, {
+      props: {
+        ...baseProps,
+        panActive: true,
+      },
+    })
+
+    const rects = wrapper.findAll('rect')
+    await rects[0].trigger('mousedown', { button: 0 })
+    await rects[2].trigger('mousedown', { button: 0 })
+
+    expect(wrapper.emitted('select')).toBeUndefined()
+    expect(wrapper.emitted('dragStart')).toBeUndefined()
+    expect(wrapper.emitted('handleDragStart')).toBeUndefined()
   })
 })

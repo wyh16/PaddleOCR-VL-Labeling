@@ -315,6 +315,7 @@ function onBBoxSelect(id: string) {
 function onBBoxDragStart(id: string, e: MouseEvent) {
   if (props.readonly) return
   if (props.activeTool !== 'select') return
+  if (spaceHeld.value) return
   e.stopPropagation()
 
   const canvas = canvasRef.value
@@ -336,6 +337,7 @@ function onBBoxDragStart(id: string, e: MouseEvent) {
 function onBBoxHandleDragStart(id: string, handleIndex: number, e: MouseEvent) {
   if (props.readonly) return
   if (props.activeTool !== 'select') return
+  if (spaceHeld.value) return
   e.stopPropagation()
   store.savePreDragSnapshot()
   isDragging.value = true
@@ -465,6 +467,7 @@ const cursorClass = computed(() => {
         <!-- 已有标注对象（视口坐标） -->
         <BBoxOverlay v-for="obj in viewportObjects" :key="obj.id" :obj="obj"
           :selected="store.selectedId.value === obj.id" :label-name="obj.type" :active-tool="props.activeTool"
+          :pan-active="spaceHeld || props.activeTool === 'pan'"
           @select="onBBoxSelect(obj.id)" @drag-start="(e) => onBBoxDragStart(obj.id, e)"
           @handle-drag-start="(idx, e) => onBBoxHandleDragStart(obj.id, idx, e)" />
 

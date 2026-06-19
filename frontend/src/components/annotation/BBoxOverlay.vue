@@ -22,6 +22,7 @@ interface Props {
   selected: boolean
   labelName: string
   activeTool: 'select' | 'bbox' | 'read_order' | 'pan'
+  panActive: boolean
 }
 
 const props = defineProps<Props>()
@@ -38,6 +39,7 @@ const x = computed(() => props.obj.viewportBbox[0])
 const y = computed(() => props.obj.viewportBbox[1])
 const w = computed(() => props.obj.viewportBbox[2] - props.obj.viewportBbox[0])
 const h = computed(() => props.obj.viewportBbox[3] - props.obj.viewportBbox[1])
+const bboxCursorClass = computed(() => props.panActive ? 'cursor-grab' : 'cursor-move')
 
 /** 8 个控制点位置：上中、右上、右中、右下、下中、左下、左中、左上 */
 const handles = computed(() => {
@@ -57,11 +59,13 @@ const handles = computed(() => {
 })
 
 function onRectMouseDown(e: MouseEvent) {
+  if (props.panActive) return
   emit('select')
   emit('dragStart', e)
 }
 
 function onHandleMouseDown(idx: number, e: MouseEvent) {
+  if (props.panActive) return
   emit('select')
   emit('handleDragStart', idx, e)
 }
@@ -78,7 +82,7 @@ function onHandleMouseDown(idx: number, e: MouseEvent) {
       :fill="selected ? `${obj.color}10` : 'transparent'"
       :stroke="obj.color"
       :stroke-width="selected ? 2 : 1.5"
-      class="cursor-move"
+      :class="bboxCursorClass"
       @mousedown.left="onRectMouseDown"
     />
 
@@ -138,7 +142,7 @@ function onHandleMouseDown(idx: number, e: MouseEvent) {
         fill="white"
         :stroke="obj.color"
         stroke-width="1.5"
-        :style="{ cursor: handle.cursor }"
+        :style="{ cursor: panActive ? 'grab' : handle.cursor }"
         @mousedown.left.stop="onHandleMouseDown(handle.idx, $event)"
       />
     </template>
