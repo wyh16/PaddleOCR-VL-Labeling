@@ -448,7 +448,7 @@ const cursorClass = computed(() => {
     </div>
 
     <!-- Canvas + SVG 叠加层（固定视口） -->
-    <div v-show="imageLoaded" class="relative" style="width: 800px; height: 600px;">
+    <div v-show="imageLoaded" class="relative overflow-hidden" style="width: 800px; height: 600px;">
       <!-- 渲染层：Canvas（物理尺寸锁定，矩阵变换绘图） -->
       <canvas ref="canvasRef" class="block" style="width: 800px; height: 600px;" />
 

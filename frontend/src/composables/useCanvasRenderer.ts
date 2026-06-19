@@ -92,6 +92,8 @@ export function useCanvasRenderer() {
     const oy = offset.value.y
 
     // ── 阶段 1：清除并绘制图片 ──
+    // 先恢复单位矩阵，避免在缩放矩阵下清屏留下边缘残影。
+    ctx.setTransform(1, 0, 0, 1, 0, 0)
     ctx.clearRect(0, 0, canvas.width, canvas.height)
 
     // 一次性设置：DPR × 缩放 + DPR × 偏移
