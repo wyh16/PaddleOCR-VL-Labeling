@@ -1420,7 +1420,7 @@ COCO bbox 为 [x, y, width, height]
 segmentation 非空
 area > 0
 导出对象必须有 read_order
-read_order 为正整数
+read_order 为非负整数
 同一 image 的 read_order 不重复
 同一 image 的 read_order 在过滤导出对象后连续
 自动建议排序未人工确认时按 export_profile 配置 warning 或 failed

@@ -988,7 +988,7 @@ Content-Type: application/json
       "geometry": {
         "bbox_xyxy": [10, 20, 110, 120]
       },
-      "read_order": 1,
+      "read_order": 0,
       "attributes": {},
       "source_refs": [],
       "status": "draft"
@@ -1038,7 +1038,7 @@ Content-Type: application/json
 | `geometry.bbox_xyxy` | 可选，格式为 `[xmin, ymin, xmax, ymax]`，必须在页面范围内，且满足 `xmin < xmax`、`ymin < ymax`。 |
 | `geometry.quad` | 可选，必须是 4 个点，每个点为 `[x, y]`。 |
 | `geometry.polygon` | 可选，至少 3 个点，每个点为 `[x, y]`。 |
-| `read_order` | 可选；如果存在，必须是正整数，且同一 revision 内不可重复。 |
+| `read_order` | 可选；如果存在，必须是非负整数，且同一 revision 内不可重复。 |
 | `attributes` | 可选；如果存在，必须是对象。 |
 | `source_refs` | 可选；如果存在，必须是数组或对象。 |
 | `status` | 可选；允许 `draft`、`active`、`deleted`，缺失时按 `active` 处理。 |

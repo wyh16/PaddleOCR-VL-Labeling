@@ -452,13 +452,14 @@ read_order 人工排序：
 
 ```text
 1. read_order 模式纳入 MVP。
-2. 用户按阅读顺序点击 bbox，系统依次写入 read_order=1..N。
+2. 用户按阅读顺序点击 bbox，工作台按 1..N 展示和编辑 read_order。
 3. read_order badge 显示在 bbox 中心或上方，缩放时保持可读，但不得遮挡主要试卷文字。
 4. 用户可以在 read_order badge 或右侧属性面板中直接修改序号。
 5. 支持撤销、清空当前页排序、重新从 1 开始排序。
-6. read_order 修改只更新当前 draft，并随整页 annotation revision 一起保存。
-7. MVP 不需要单独 read_order API。
-8. readonly、locked、conflict 或缺少 can_create_annotation_revision 时禁止 read_order 编辑。
+6. 保存 revision 或导出前，前端把工作台内的 1-based read_order 转换为后端/官方格式要求的 0-based 值。
+7. read_order 修改只更新当前 draft，并随整页 annotation revision 一起保存。
+8. MVP 不需要单独 read_order API。
+9. readonly、locked、conflict 或缺少 can_create_annotation_revision 时禁止 read_order 编辑。
 ```
 
 自动排序建议：
@@ -799,7 +800,7 @@ MVP 标注工作台可按以下标准验收：
 9. 自动保存 debounce、同页最小 revision 间隔、单 pending 队列和 autosave revision 折叠策略明确生效。
 10. 自动保存不会在绘制、拖拽、readonly、manual_saving、conflict、缺少 capability 或校验失败状态下触发。
 11. autosave 不触发完整 QC，手动保存或显式 QC 才进入完整 QC 流程。
-12. read_order 模式能按点击顺序写入 1..N，显示序号 badge，支持撤销、清空和重新排序。
+12. read_order 模式能按点击顺序写入 1..N，显示序号 badge，保存时转换为 0-based，支持撤销、清空和重新排序。
 13. Ctrl + B 只生成排序建议，经确认后才写入 draft。
 14. 409 冲突不会自动覆盖 latest revision。
 15. locked 或无权限状态下无法通过鼠标或快捷键编辑。
