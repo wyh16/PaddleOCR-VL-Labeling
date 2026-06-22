@@ -126,6 +126,17 @@ def test_project_capabilities_route_remains_owned_by_projects_router() -> None:
     assert endpoints == ["app.api.v1.endpoints.projects.get_my_capabilities"]
 
 
+def test_user_routes_are_owned_by_access_router() -> None:
+    list_endpoints = route_endpoints_for_path("/api/v1/users")
+    disable_endpoints = route_endpoints_for_path("/api/v1/users/{user_id}/disable")
+
+    assert list_endpoints == [
+        "app.api.v1.endpoints.access.read_users",
+        "app.api.v1.endpoints.access.create_user_account",
+    ]
+    assert disable_endpoints == ["app.api.v1.endpoints.access.disable_user_account"]
+
+
 def test_project_admin_can_add_member_and_grant_role(monkeypatch: Any) -> None:
     client = create_test_client(monkeypatch)
     monkeypatch.setattr(

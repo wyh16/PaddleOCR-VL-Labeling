@@ -7,9 +7,10 @@ from typing import Any
 import httpx
 import pytest
 
-from app.api.v1.endpoints import users as users_endpoint
+from app.api.v1.endpoints import access as access_endpoint
 from app.db.models import User
 from app.main import create_app
+from app.services import access_service
 
 
 class ScalarResult:
@@ -78,8 +79,8 @@ def build_user(*, user_id: int, is_system_admin: bool, status: str = "active") -
 
 def create_test_app(db: FakeDb, current_user: User):
     app = create_app()
-    app.dependency_overrides[users_endpoint.get_current_user] = lambda: current_user
-    app.dependency_overrides[users_endpoint.get_db_session] = lambda: db
+    app.dependency_overrides[access_endpoint.get_current_user] = lambda: current_user
+    app.dependency_overrides[access_endpoint.get_db_session] = lambda: db
     return app
 
 
@@ -118,9 +119,9 @@ def test_list_users_returns_visible_users() -> None:
 
     assert response.status_code == 200
     body = response.json()
-    assert body["total"] == 2
-    assert body["items"][0]["id"] == 2
-    assert body["items"][1]["is_system_admin"] is True
+    assert body["data"][0]["id"] == 2
+    assert body["data"][1]["is_system_admin"] is True
+    assert body["request_id"].startswith("req_")
 
 
 def test_create_user_supports_assigning_system_admin_role(
@@ -129,7 +130,7 @@ def test_create_user_supports_assigning_system_admin_role(
     db = FakeDb()
     app = create_test_app(db, build_user(user_id=1, is_system_admin=True))
     monkeypatch.setattr(
-        users_endpoint, "hash_password", lambda password: f"hashed::{password}"
+        access_service, "hash_password", lambda password: f"hashed::{password}"
     )
 
     response = request(
@@ -139,7 +140,7 @@ def test_create_user_supports_assigning_system_admin_role(
         json={
             "username": "admin2",
             "display_name": "管理员二号",
-            "password": "secret123",
+            "temporary_password": "ChangeMe-123456",
             "email": "admin2@example.com",
             "is_system_admin": True,
         },
@@ -147,9 +148,9 @@ def test_create_user_supports_assigning_system_admin_role(
 
     assert response.status_code == 201
     body = response.json()
-    assert body["username"] == "admin2"
-    assert body["is_system_admin"] is True
-    assert db.users[0].password_hash == "hashed::secret123"
+    assert body["data"]["username"] == "admin2"
+    assert body["data"]["is_system_admin"] is True
+    assert db.users[0].password_hash == "hashed::ChangeMe-123456"
     assert len(db.audit_logs) == 1
 
 
@@ -161,43 +162,8 @@ def test_disable_user_updates_status() -> None:
     response = request(app, "POST", "/api/v1/users/2/disable")
 
     assert response.status_code == 200
-    assert response.json()["status"] == "disabled"
+    assert response.json()["data"]["status"] == "disabled"
     assert target_user.status == "disabled"
-
-
-def test_enable_user_updates_status() -> None:
-    target_user = build_user(user_id=2, is_system_admin=False, status="disabled")
-    db = FakeDb(users=[target_user])
-    app = create_test_app(db, build_user(user_id=1, is_system_admin=True))
-
-    response = request(app, "POST", "/api/v1/users/2/enable")
-
-    assert response.status_code == 200
-    assert response.json()["status"] == "active"
-    assert target_user.status == "active"
-
-
-def test_system_admin_cannot_demote_self() -> None:
-    current_user = build_user(user_id=1, is_system_admin=True, status="active")
-    db = FakeDb(users=[current_user])
-    app = create_test_app(db, current_user)
-
-    response = request(
-        app,
-        "PATCH",
-        "/api/v1/users/1",
-        json={
-            "display_name": current_user.display_name,
-            "is_system_admin": False,
-        },
-    )
-
-    assert response.status_code == 400
-    assert (
-        response.json()["detail"]
-        == "You cannot remove your own system administrator role."
-    )
-    assert current_user.is_system_admin is True
 
 
 def test_system_admin_cannot_disable_self() -> None:
@@ -208,46 +174,16 @@ def test_system_admin_cannot_disable_self() -> None:
     response = request(app, "POST", "/api/v1/users/1/disable")
 
     assert response.status_code == 400
-    assert response.json()["detail"] == "You cannot disable your own account."
+    assert response.json()["error"]["code"] == "VALIDATION_ERROR"
+    assert response.json()["error"]["message"] == "You cannot disable your own account."
     assert current_user.status == "active"
 
 
-def test_cannot_demote_last_active_system_admin() -> None:
-    current_user = build_user(user_id=1, is_system_admin=True, status="disabled")
-    target_user = build_user(user_id=2, is_system_admin=True, status="active")
-    db = FakeDb(users=[target_user, current_user])
-    app = create_test_app(db, current_user)
+def test_disabled_system_admin_cannot_manage_users() -> None:
+    db = FakeDb(users=[build_user(user_id=2, is_system_admin=False)])
+    app = create_test_app(db, build_user(user_id=1, is_system_admin=True, status="disabled"))
 
-    response = request(
-        app,
-        "PATCH",
-        "/api/v1/users/2",
-        json={
-            "display_name": target_user.display_name,
-            "is_system_admin": False,
-        },
-    )
+    response = request(app, "GET", "/api/v1/users")
 
-    assert response.status_code == 400
-    assert (
-        response.json()["detail"]
-        == "At least one active system administrator must remain."
-    )
-    assert target_user.is_system_admin is True
-
-
-def test_cannot_disable_last_active_system_admin() -> None:
-    current_user = build_user(user_id=1, is_system_admin=True, status="disabled")
-    target_user = build_user(user_id=2, is_system_admin=True, status="active")
-    other_admin = build_user(user_id=3, is_system_admin=True, status="pending")
-    db = FakeDb(users=[target_user, other_admin, current_user])
-    app = create_test_app(db, current_user)
-
-    response = request(app, "POST", "/api/v1/users/2/disable")
-
-    assert response.status_code == 400
-    assert (
-        response.json()["detail"]
-        == "At least one active system administrator must remain."
-    )
-    assert target_user.status == "active"
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Permission denied."

@@ -12,7 +12,7 @@ from app.db.models import AuditLog, MemberRoleBinding, ProjectMember, RoleRegist
 class AccessRepository:
     def list_users(self, db: Session) -> list[User]:
         stmt = select(User).where(User.deleted_at.is_(None)).order_by(User.id)
-        return list(db.scalars(stmt))
+        return db.scalars(stmt).all()
 
     def get_user(self, db: Session, user_id: int) -> User | None:
         stmt = select(User).where(User.id == user_id, User.deleted_at.is_(None))
@@ -62,7 +62,7 @@ class AccessRepository:
             .where(RoleRegistry.is_builtin.is_(True), RoleRegistry.is_active.is_(True))
             .order_by(RoleRegistry.scope, RoleRegistry.code)
         )
-        return list(db.scalars(stmt))
+        return db.scalars(stmt).all()
 
     def get_project_member(
         self,
@@ -98,7 +98,7 @@ class AccessRepository:
             .where(ProjectMember.project_id == project_id)
             .order_by(ProjectMember.id)
         )
-        return list(db.scalars(stmt))
+        return db.scalars(stmt).all()
 
     def add_project_member(
         self,

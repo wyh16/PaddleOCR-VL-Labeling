@@ -239,6 +239,9 @@ def disable_user(
     user = repo.get_user(db, user_id)
     if user is None:
         raise AccessNotFoundError(f"用户不存在：{user_id}")
+    if user.id == actor_id:
+        raise AccessValidationError("You cannot disable your own account.")
+    _ensure_not_last_active_system_admin(db=db, target_user=user, repository=repo)
     before_status = user.status
     user.status = "disabled"
     repo.write_audit_log(
@@ -253,6 +256,27 @@ def disable_user(
     )
     _commit_if_possible(db)
     return _user_summary(user)
+
+
+def _ensure_not_last_active_system_admin(
+    *,
+    db: Session,
+    target_user: User,
+    repository: AccessRepositoryProtocol,
+) -> None:
+    if not target_user.is_system_admin or target_user.status != "active":
+        return
+
+    remaining_active_admins = [
+        user
+        for user in repository.list_users(db)
+        if user.id != target_user.id
+        and user.is_system_admin
+        and user.status == "active"
+    ]
+    if remaining_active_admins:
+        return
+    raise AccessValidationError("At least one active system administrator must remain.")
 
 
 def list_roles(

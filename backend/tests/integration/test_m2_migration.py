@@ -199,11 +199,12 @@ def test_post_m2_migrations_have_single_head_and_expected_order() -> None:
     config.set_main_option("script_location", str(ALEMBIC_ROOT))
     script = ScriptDirectory.from_config(config)
 
-    assert script.get_heads() == ["20260615_0004"]
+    assert script.get_heads() == ["20260619_0006"]
     assert script.get_revision("20260608_0003").down_revision == "20260603_0002"
     assert script.get_revision("20260608_0004").down_revision == "20260608_0003"
     assert script.get_revision("20260609_0005").down_revision == "20260608_0004"
     assert script.get_revision("20260615_0004").down_revision == "20260609_0005"
+    assert script.get_revision("20260619_0006").down_revision == "20260615_0004"
 
 
 def test_project_created_by_migration_avoids_hard_coded_admin_id() -> None:

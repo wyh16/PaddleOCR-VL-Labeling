@@ -116,6 +116,13 @@ def disable_user_account(
             message=str(exc),
             details={"user_id": user_id},
         )
+    except AccessValidationError as exc:
+        return _error_response(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            code="VALIDATION_ERROR",
+            message=str(exc),
+            details={"user_id": user_id},
+        )
 
 
 @router.get("/roles", response_model=RoleListResponse, summary="查询内置角色")
