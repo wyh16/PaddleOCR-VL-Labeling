@@ -12,8 +12,8 @@ export interface SystemUser {
   status: 'active' | 'disabled' | 'pending'
   is_system_admin: boolean
   last_login_at: string | null
-  created_at: string
-  updated_at: string
+  created_at: string | null
+  updated_at: string | null
 }
 
 interface RawSystemUser {
@@ -23,9 +23,6 @@ interface RawSystemUser {
   email: string | null
   status: 'active' | 'disabled' | 'pending'
   is_system_admin: boolean
-  last_login_at: string | null
-  created_at: string
-  updated_at: string
 }
 
 export interface SystemUserListResponse {
@@ -36,19 +33,15 @@ export interface SystemUserListResponse {
 export interface CreateSystemUserRequest {
   username: string
   display_name: string
-  password: string
+  temporary_password: string
   email?: string | null
-  project_id?: number | null
-  project_role_codes?: string[]
   is_system_admin: boolean
 }
 
 export interface UpdateSystemUserRequest {
   display_name?: string
-  password?: string
+  temporary_password?: string
   email?: string | null
-  project_id?: number | null
-  project_role_codes?: string[]
   is_system_admin?: boolean
 }
 
@@ -56,36 +49,39 @@ function adaptUser(raw: RawSystemUser): SystemUser {
   return {
     ...raw,
     id: String(raw.id),
+    last_login_at: null,
+    created_at: null,
+    updated_at: null,
   }
 }
 
 export const usersApi = {
   list: async (keyword?: string): Promise<SystemUserListResponse> => {
     const query = keyword?.trim() ? `?q=${encodeURIComponent(keyword.trim())}` : ''
-    const res = await api.get<{ items: RawSystemUser[]; total: number }>(`/users${query}`)
+    const res = await api.get<{ data: RawSystemUser[]; request_id: string }>(`/users${query}`)
     return {
-      items: res.items.map(adaptUser),
-      total: res.total,
+      items: res.data.map(adaptUser),
+      total: res.data.length,
     }
   },
 
   create: async (payload: CreateSystemUserRequest): Promise<SystemUser> => {
-    const raw = await api.post<RawSystemUser>('/users', payload)
-    return adaptUser(raw)
+    const res = await api.post<{ data: RawSystemUser; request_id: string }>('/users', payload)
+    return adaptUser(res.data)
   },
 
   update: async (userId: string, payload: UpdateSystemUserRequest): Promise<SystemUser> => {
-    const raw = await api.patch<RawSystemUser>(`/users/${userId}`, payload)
-    return adaptUser(raw)
+    const res = await api.patch<{ data: RawSystemUser; request_id: string }>(`/users/${userId}`, payload)
+    return adaptUser(res.data)
   },
 
   disable: async (userId: string): Promise<SystemUser> => {
-    const raw = await api.post<RawSystemUser>(`/users/${userId}/disable`)
-    return adaptUser(raw)
+    const res = await api.post<{ data: RawSystemUser; request_id: string }>(`/users/${userId}/disable`)
+    return adaptUser(res.data)
   },
 
   enable: async (userId: string): Promise<SystemUser> => {
-    const raw = await api.post<RawSystemUser>(`/users/${userId}/enable`)
-    return adaptUser(raw)
+    const res = await api.post<{ data: RawSystemUser; request_id: string }>(`/users/${userId}/enable`)
+    return adaptUser(res.data)
   },
 }

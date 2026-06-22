@@ -12,6 +12,7 @@ from app.repositories.access import DEFAULT_ACCESS_REPOSITORY
 
 USERNAME_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_.-]{2,63}$")
 EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+UNSET = object()
 
 
 class AccessNotFoundError(ValueError):
@@ -228,6 +229,73 @@ def create_user(
     return _user_summary(user)
 
 
+def update_user(
+    *,
+    db: Session,
+    user_id: int,
+    actor_id: int,
+    display_name: str | None = None,
+    email: str | None | object = UNSET,
+    temporary_password: str | None = None,
+    is_system_admin: bool | None = None,
+    repository: AccessRepositoryProtocol | None = None,
+) -> UserSummary:
+    repo = repository or DEFAULT_ACCESS_REPOSITORY
+    user = repo.get_user(db, user_id)
+    if user is None:
+        raise AccessNotFoundError(f"用户不存在：{user_id}")
+
+    if is_system_admin is False and user.id == actor_id:
+        raise AccessValidationError(
+            "You cannot remove your own system administrator role."
+        )
+    if is_system_admin is False:
+        _ensure_not_last_active_system_admin(db=db, target_user=user, repository=repo)
+
+    before_json = {
+        "display_name": user.display_name,
+        "email": user.email,
+        "is_system_admin": user.is_system_admin,
+        "password_must_change": user.password_must_change,
+    }
+
+    if display_name is not None:
+        user.display_name = _normalize_display_name(display_name)
+    if email is not UNSET:
+        normalized_email = _normalize_email(email)
+        if (
+            normalized_email is not None
+            and normalized_email != user.email
+            and repo.get_user_by_email(db, normalized_email) is not None
+        ):
+            raise AccessValidationError(f"邮箱已存在：{normalized_email}")
+        user.email = normalized_email
+    if temporary_password is not None:
+        _validate_temporary_password(temporary_password)
+        user.password_hash = hash_password(temporary_password)
+        user.password_must_change = True
+    if is_system_admin is not None:
+        user.is_system_admin = is_system_admin
+
+    repo.write_audit_log(
+        db,
+        project_id=None,
+        actor_id=actor_id,
+        action="user.update",
+        resource_type="user",
+        resource_id=str(user.id),
+        before_json=before_json,
+        after_json={
+            "display_name": user.display_name,
+            "email": user.email,
+            "is_system_admin": user.is_system_admin,
+            "password_must_change": user.password_must_change,
+        },
+    )
+    _commit_if_possible(db)
+    return _user_summary(user)
+
+
 def disable_user(
     *,
     db: Session,
@@ -249,6 +317,33 @@ def disable_user(
         project_id=None,
         actor_id=actor_id,
         action="user.disable",
+        resource_type="user",
+        resource_id=str(user.id),
+        before_json={"status": before_status},
+        after_json={"status": user.status},
+    )
+    _commit_if_possible(db)
+    return _user_summary(user)
+
+
+def enable_user(
+    *,
+    db: Session,
+    user_id: int,
+    actor_id: int,
+    repository: AccessRepositoryProtocol | None = None,
+) -> UserSummary:
+    repo = repository or DEFAULT_ACCESS_REPOSITORY
+    user = repo.get_user(db, user_id)
+    if user is None:
+        raise AccessNotFoundError(f"用户不存在：{user_id}")
+    before_status = user.status
+    user.status = "active"
+    repo.write_audit_log(
+        db,
+        project_id=None,
+        actor_id=actor_id,
+        action="user.enable",
         resource_type="user",
         resource_id=str(user.id),
         before_json={"status": before_status},

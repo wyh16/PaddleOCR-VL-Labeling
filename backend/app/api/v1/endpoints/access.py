@@ -26,6 +26,7 @@ from app.schemas.access import (
     UserListResponse,
     UserRead,
     UserResponse,
+    UserUpdateRequest,
 )
 from app.services.access_service import (
     AccessNotFoundError,
@@ -34,6 +35,7 @@ from app.services.access_service import (
     create_user,
     disable_project_member,
     disable_user,
+    enable_user,
     grant_project_role,
     list_project_member_roles,
     list_project_members,
@@ -41,6 +43,8 @@ from app.services.access_service import (
     list_users,
     remove_project_member,
     revoke_project_role,
+    update_user,
+    UNSET,
 )
 from app.utils.ids import new_public_id
 
@@ -91,6 +95,45 @@ def create_user_account(
         )
 
 
+@router.patch(
+    "/users/{user_id}",
+    response_model=UserResponse,
+    summary="更新用户",
+)
+def update_user_account(
+    user_id: int,
+    payload: UserUpdateRequest,
+    db: Session = Depends(get_db_session),
+    current_user: User = Depends(get_current_user),
+) -> UserResponse | JSONResponse:
+    _ensure_can_manage_system_users(current_user)
+    try:
+        user = update_user(
+            db=db,
+            user_id=user_id,
+            actor_id=current_user.id,
+            display_name=payload.display_name,
+            email=payload.email if "email" in payload.model_fields_set else UNSET,
+            temporary_password=payload.temporary_password,
+            is_system_admin=payload.is_system_admin,
+        )
+        return UserResponse(data=_user_read(user), request_id=new_public_id("req"))
+    except AccessNotFoundError as exc:
+        return _error_response(
+            status_code=status.HTTP_404_NOT_FOUND,
+            code="USER_NOT_FOUND",
+            message=str(exc),
+            details={"user_id": user_id},
+        )
+    except AccessValidationError as exc:
+        return _error_response(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            code="VALIDATION_ERROR",
+            message=str(exc),
+            details={"user_id": user_id},
+        )
+
+
 @router.post(
     "/users/{user_id}/disable",
     response_model=UserResponse,
@@ -120,6 +163,33 @@ def disable_user_account(
         return _error_response(
             status_code=status.HTTP_400_BAD_REQUEST,
             code="VALIDATION_ERROR",
+            message=str(exc),
+            details={"user_id": user_id},
+        )
+
+
+@router.post(
+    "/users/{user_id}/enable",
+    response_model=UserResponse,
+    summary="启用用户",
+)
+def enable_user_account(
+    user_id: int,
+    db: Session = Depends(get_db_session),
+    current_user: User = Depends(get_current_user),
+) -> UserResponse | JSONResponse:
+    _ensure_can_manage_system_users(current_user)
+    try:
+        user = enable_user(
+            db=db,
+            user_id=user_id,
+            actor_id=current_user.id,
+        )
+        return UserResponse(data=_user_read(user), request_id=new_public_id("req"))
+    except AccessNotFoundError as exc:
+        return _error_response(
+            status_code=status.HTTP_404_NOT_FOUND,
+            code="USER_NOT_FOUND",
             message=str(exc),
             details={"user_id": user_id},
         )
@@ -446,5 +516,3 @@ def _member_read(value: Any) -> ProjectMemberRead:
         member_status=value.member_status,
         roles=value.roles,
     )
-
-

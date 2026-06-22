@@ -1,7 +1,7 @@
 # 后端接口文档
 
-版本：v0.5
-日期：2026-06-15
+版本：v0.6
+日期：2026-06-22
 用途：记录当前后端已经实现、可用于前后端联调的 API 契约。规划中但尚未实现的接口继续以 `k12_annotation_platform_backend_design.md` 为准。
 
 ## 目录
@@ -46,6 +46,7 @@
 
 | 版本 | 日期 | 说明 |
 |---|---|---|
+| v0.6 | 2026-06-22 | 补充用户编辑与启用接口，前后端统一使用 access 契约恢复用户管理页编辑/启用能力。 |
 | v0.5 | 2026-06-15 | 补充 M4a 用户、角色、项目成员和 capabilities 已实现接口，并保留项目、页面、图片签名和 QC 接口说明。 |
 | v0.4 | 2026-06-14 | 移除未批准的页面删除接口，避免前后端继续依赖物理删除能力。 |
 | v0.3 | 2026-06-13 | 收敛认证、响应包装和临时接口说明，明确 Cookie/CSRF、页面删除和响应格式待规范化边界。 |
@@ -165,7 +166,9 @@ Authorization: Bearer <access_token>
 | `GET` | `/api/v1/pages/{page_id}/qc` | 是 | 已实现 | 获取页面 QC 问题列表。 |
 | `GET` | `/api/v1/users` | 是 | 已实现 | 具备 `can_manage_system_users` 的用户查询用户列表。 |
 | `POST` | `/api/v1/users` | 是 | 已实现 | 具备 `can_manage_system_users` 的用户创建用户，不返回临时密码或密码哈希。 |
+| `PATCH` | `/api/v1/users/{user_id}` | 是 | 已实现 | 具备 `can_manage_system_users` 的用户更新用户资料、邮箱、临时密码和系统管理员标记。 |
 | `POST` | `/api/v1/users/{user_id}/disable` | 是 | 已实现 | 具备 `can_manage_system_users` 的用户禁用用户。 |
+| `POST` | `/api/v1/users/{user_id}/enable` | 是 | 已实现 | 具备 `can_manage_system_users` 的用户重新启用用户。 |
 | `GET` | `/api/v1/roles` | 是 | 已实现 | 查询内置角色及 capabilities。 |
 | `GET` | `/api/v1/projects/{project_id}/members` | 是 | 已实现 | 查询项目成员，需要 `can_manage_project_members`。 |
 | `POST` | `/api/v1/projects/{project_id}/members` | 是 | 已实现 | 添加项目成员，需要 `can_manage_project_members`。 |
@@ -1355,7 +1358,68 @@ MVP 阶段该 capability 由 `current_user.is_system_admin=true` 推导。
 5. 创建用户不会自动加入任何项目；必须再通过项目成员和项目角色接口授权。
 ```
 
-#### 9.3.3 禁用用户
+#### 9.3.3 更新用户
+
+```http
+PATCH /api/v1/users/{user_id}
+Authorization: Bearer <access_token>
+Content-Type: application/json
+```
+
+权限：
+
+```text
+需要 `can_manage_system_users`。
+MVP 阶段该 capability 由 `current_user.is_system_admin=true` 推导。
+```
+
+请求体：
+
+```json
+{
+  "display_name": "新显示名",
+  "email": null,
+  "temporary_password": "ChangeMe-654321",
+  "is_system_admin": false
+}
+```
+
+请求字段：
+
+| 字段 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `display_name` | string/null | 否 | 新的显示名称；省略表示保持原值。 |
+| `email` | string/null | 否 | 新的邮箱；传 `null` 表示清空，省略表示保持原值。 |
+| `temporary_password` | string/null | 否 | 管理员重置的临时密码；传入时会更新密码哈希并把 `password_must_change` 设为 `true`。 |
+| `is_system_admin` | boolean/null | 否 | 是否更新为系统管理员；省略表示保持原值。 |
+
+成功响应：`200`
+
+```json
+{
+  "data": {
+    "id": 20,
+    "username": "annotator",
+    "display_name": "新显示名",
+    "email": null,
+    "status": "active",
+    "is_system_admin": false
+  },
+  "request_id": "req_xxx"
+}
+```
+
+保存行为：
+
+```text
+1. 只更新请求体中显式传入的字段；email 传 null 时会清空邮箱。
+2. temporary_password 只参与本次密码重置，不进入响应、日志或审计 details。
+3. 写入 audit_logs，action=user.update，resource_type=user。
+4. 当前不支持修改 username，也不通过该接口变更用户 status。
+5. 不能移除当前登录管理员自己的 system_admin 身份，也不能把最后一个 active system_admin 降级为普通用户。
+```
+
+#### 9.3.4 禁用用户
 
 ```http
 POST /api/v1/users/{user_id}/disable
@@ -1395,7 +1459,54 @@ MVP 阶段该 capability 由 `current_user.is_system_admin=true` 推导。
 3. 不删除用户，不破坏历史 created_by / reviewer_id / export created_by 等追溯字段。
 ```
 
-#### 9.3.4 查询内置角色
+额外限制：
+
+```text
+1. 不能禁用当前登录用户自己。
+2. 不能禁用最后一个 active system_admin。
+```
+
+#### 9.3.5 启用用户
+
+```http
+POST /api/v1/users/{user_id}/enable
+Authorization: Bearer <access_token>
+```
+
+权限：
+
+```text
+需要 `can_manage_system_users`。
+MVP 阶段该 capability 由 `current_user.is_system_admin=true` 推导。
+```
+
+请求体：无。
+
+成功响应：`200`
+
+```json
+{
+  "data": {
+    "id": 20,
+    "username": "annotator",
+    "display_name": "标注员",
+    "email": null,
+    "status": "active",
+    "is_system_admin": false
+  },
+  "request_id": "req_xxx"
+}
+```
+
+保存行为：
+
+```text
+1. 将 users.status 设置为 active。
+2. 写入 audit_logs，action=user.enable，resource_type=user。
+3. 启用不会修改 display_name、email、password_hash 或 system_admin 标记。
+```
+
+#### 9.3.6 查询内置角色
 
 ```http
 GET /api/v1/roles
@@ -1671,9 +1782,10 @@ M4a service 层业务错误使用统一结构：
 
 | HTTP 状态码 | code | 场景 | details |
 |---:|---|---|---|
-| `404` | `USER_NOT_FOUND` | 禁用用户或添加项目成员时，目标用户不存在。 | `user_id` |
+| `404` | `USER_NOT_FOUND` | 更新、启用、禁用用户或添加项目成员时，目标用户不存在。 | `user_id` |
 | `404` | `PROJECT_MEMBER_NOT_FOUND` | 查询、禁用、移除成员，或查询成员角色时，项目成员不存在。 | `member_id` |
 | `404` | `ROLE_OR_MEMBER_NOT_FOUND` | 授予/撤销角色时，成员不存在、角色不存在、角色 inactive，或撤销未绑定角色。 | `member_id`, `role_code` |
+| `400` | `VALIDATION_ERROR` | 更新/禁用用户触发系统管理员保护规则，例如自我降级、自我禁用或最后一个 active system_admin 保护。 | `user_id` |
 | `422` | `VALIDATION_ERROR` | 创建用户输入不合法或用户名/邮箱重复、添加非 active 用户、给 disabled / removed 成员授予角色、把 system role 绑定到项目成员。 | `username`, `email`, `user_id` 或 `member_id`, `role_code` |
 
 当前仍使用 FastAPI 默认 `detail` 的场景：
@@ -1748,7 +1860,7 @@ M4 页面与标注 revision、M4a access 接口捕获的 service 层业务错误
 8. 当前 Cookie 会话尚未实现专用 CSRF token 或双提交校验；生产部署前必须补齐 CSRF 防护，或保持同源 SameSite 策略并在安全文档中明确边界。
 9. 当前项目、标签、capabilities、revision 列表和 QC 列表等接口尚未统一 `{data, request_id}` 响应包装，前端需要逐接口适配，后续应按 backend_development_spec.md 收敛。
 10. 当前认证、权限和 Pydantic 请求校验错误尚未统一包装 request_id；M4 页面与标注 revision、M4a access 的 service 层业务错误已统一。
-11. M4a 当前实现用户创建、基础查询和禁用，不包含用户启用或密码重置；首次改密标记已落库，但改密流程仍待后续阶段实现。
+11. M4a 当前用户管理已支持创建、基础查询、编辑、启用和禁用；但仍未提供独立“当前用户改密”或“忘记密码”流程。
 12. 当前接口文档不替代自动生成的 OpenAPI；字段变化时两者都需要核对。
 13. 当前 `DELETE /projects/{project_id}` 仅是临时实现；虽然已补 409 关联数据保护，但仍是物理删除，且未补软删除和审计日志，新前端不应依赖。
 ```

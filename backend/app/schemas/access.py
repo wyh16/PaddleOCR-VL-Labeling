@@ -64,6 +64,36 @@ class UserCreateRequest(BaseModel):
     )
 
 
+class UserUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    display_name: str | None = Field(
+        None,
+        min_length=1,
+        max_length=128,
+        title="显示名称",
+        description="页面展示名称；不传表示保持原值。",
+    )
+    email: str | None = Field(
+        None,
+        max_length=255,
+        title="邮箱",
+        description="用户邮箱；传 null 表示清空，省略表示保持原值。",
+    )
+    temporary_password: str | None = Field(
+        None,
+        min_length=12,
+        max_length=256,
+        title="临时密码",
+        description="管理员重置的临时密码；不传表示不修改密码。",
+    )
+    is_system_admin: bool | None = Field(
+        default=None,
+        title="是否系统管理员",
+        description="是否更新为系统管理员；不传表示保持原值。",
+    )
+
+
 class UserResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

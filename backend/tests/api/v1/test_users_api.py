@@ -154,6 +154,39 @@ def test_create_user_supports_assigning_system_admin_role(
     assert len(db.audit_logs) == 1
 
 
+def test_update_user_updates_profile_and_password(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target_user = build_user(user_id=2, is_system_admin=False, status="active")
+    db = FakeDb(users=[target_user])
+    app = create_test_app(db, build_user(user_id=1, is_system_admin=True))
+    monkeypatch.setattr(
+        access_service, "hash_password", lambda password: f"hashed::{password}"
+    )
+
+    response = request(
+        app,
+        "PATCH",
+        "/api/v1/users/2",
+        json={
+            "display_name": "新显示名",
+            "email": None,
+            "temporary_password": "ChangeMe-654321",
+            "is_system_admin": True,
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["data"]["display_name"] == "新显示名"
+    assert body["data"]["email"] is None
+    assert body["data"]["is_system_admin"] is True
+    assert target_user.display_name == "新显示名"
+    assert target_user.email is None
+    assert target_user.password_hash == "hashed::ChangeMe-654321"
+    assert len(db.audit_logs) == 1
+
+
 def test_disable_user_updates_status() -> None:
     target_user = build_user(user_id=2, is_system_admin=False, status="active")
     db = FakeDb(users=[target_user])
@@ -164,6 +197,18 @@ def test_disable_user_updates_status() -> None:
     assert response.status_code == 200
     assert response.json()["data"]["status"] == "disabled"
     assert target_user.status == "disabled"
+
+
+def test_enable_user_updates_status() -> None:
+    target_user = build_user(user_id=2, is_system_admin=False, status="disabled")
+    db = FakeDb(users=[target_user])
+    app = create_test_app(db, build_user(user_id=1, is_system_admin=True))
+
+    response = request(app, "POST", "/api/v1/users/2/enable")
+
+    assert response.status_code == 200
+    assert response.json()["data"]["status"] == "active"
+    assert target_user.status == "active"
 
 
 def test_system_admin_cannot_disable_self() -> None:
@@ -179,9 +224,53 @@ def test_system_admin_cannot_disable_self() -> None:
     assert current_user.status == "active"
 
 
+def test_system_admin_cannot_remove_own_system_role() -> None:
+    current_user = build_user(user_id=1, is_system_admin=True, status="active")
+    db = FakeDb(users=[current_user])
+    app = create_test_app(db, current_user)
+
+    response = request(
+        app,
+        "PATCH",
+        "/api/v1/users/1",
+        json={"is_system_admin": False},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "VALIDATION_ERROR"
+    assert (
+        response.json()["error"]["message"]
+        == "You cannot remove your own system administrator role."
+    )
+    assert current_user.is_system_admin is True
+
+
+def test_last_active_system_admin_cannot_be_demoted() -> None:
+    target_user = build_user(user_id=2, is_system_admin=True, status="active")
+    db = FakeDb(users=[target_user])
+    app = create_test_app(db, build_user(user_id=1, is_system_admin=True))
+
+    response = request(
+        app,
+        "PATCH",
+        "/api/v1/users/2",
+        json={"is_system_admin": False},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "VALIDATION_ERROR"
+    assert (
+        response.json()["error"]["message"]
+        == "At least one active system administrator must remain."
+    )
+    assert target_user.is_system_admin is True
+
+
 def test_disabled_system_admin_cannot_manage_users() -> None:
     db = FakeDb(users=[build_user(user_id=2, is_system_admin=False)])
-    app = create_test_app(db, build_user(user_id=1, is_system_admin=True, status="disabled"))
+    app = create_test_app(
+        db, build_user(user_id=1, is_system_admin=True, status="disabled")
+    )
 
     response = request(app, "GET", "/api/v1/users")
 

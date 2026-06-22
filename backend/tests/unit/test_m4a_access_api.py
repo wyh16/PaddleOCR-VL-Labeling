@@ -104,7 +104,9 @@ def test_m4a_access_routes_are_registered() -> None:
 
     assert "GET" in routes["/api/v1/users"]
     assert "POST" in routes["/api/v1/users"]
+    assert "PATCH" in routes["/api/v1/users/{user_id}"]
     assert "POST" in routes["/api/v1/users/{user_id}/disable"]
+    assert "POST" in routes["/api/v1/users/{user_id}/enable"]
     assert "GET" in routes["/api/v1/roles"]
     assert "GET" in routes["/api/v1/projects/{project_id}/members"]
     assert "POST" in routes["/api/v1/projects/{project_id}/members"]
@@ -128,13 +130,17 @@ def test_project_capabilities_route_remains_owned_by_projects_router() -> None:
 
 def test_user_routes_are_owned_by_access_router() -> None:
     list_endpoints = route_endpoints_for_path("/api/v1/users")
+    update_endpoints = route_endpoints_for_path("/api/v1/users/{user_id}")
     disable_endpoints = route_endpoints_for_path("/api/v1/users/{user_id}/disable")
+    enable_endpoints = route_endpoints_for_path("/api/v1/users/{user_id}/enable")
 
     assert list_endpoints == [
         "app.api.v1.endpoints.access.read_users",
         "app.api.v1.endpoints.access.create_user_account",
     ]
+    assert update_endpoints == ["app.api.v1.endpoints.access.update_user_account"]
     assert disable_endpoints == ["app.api.v1.endpoints.access.disable_user_account"]
+    assert enable_endpoints == ["app.api.v1.endpoints.access.enable_user_account"]
 
 
 def test_project_admin_can_add_member_and_grant_role(monkeypatch: Any) -> None:
@@ -484,5 +490,3 @@ def test_missing_member_or_role_request_body_returns_422(monkeypatch: Any) -> No
 
     assert add_response.status_code == 422
     assert grant_response.status_code == 422
-
-
