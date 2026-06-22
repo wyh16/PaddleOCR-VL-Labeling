@@ -25,13 +25,39 @@ export function useCanvasRenderer() {
   const imageSize = ref<Point>({ x: 0, y: 0 })
   const imageSource = ref<HTMLImageElement | null>(null)
   const dpr = ref(1)
+  const fitScale = ref(1)
 
   // ── 视口边界（基于逻辑像素，用于 SVG viewBox） ──
   const viewport = computed(() => ({ w: VIEWPORT_W, h: VIEWPORT_H }))
 
   // ── 缩放约束 ──
-  const MIN_SCALE = 0.05
+  const ABSOLUTE_MIN_SCALE = 0.1
   const MAX_SCALE = 20
+  const minScale = computed(() => Math.min(MAX_SCALE, Math.max(ABSOLUTE_MIN_SCALE, fitScale.value * 0.5)))
+
+  function clampOffset(nextScale: number, nextOffset: Point): Point {
+    const scaledWidth = imageSize.value.x * nextScale
+    const scaledHeight = imageSize.value.y * nextScale
+
+    const clampAxis = (scaledSize: number, viewportSize: number, axisOffset: number): number => {
+      if (scaledSize <= viewportSize) {
+        return (viewportSize - scaledSize) / 2
+      }
+
+      const minOffset = viewportSize - scaledSize
+      const maxOffset = 0
+      return Math.min(maxOffset, Math.max(minOffset, axisOffset))
+    }
+
+    return {
+      x: clampAxis(scaledWidth, VIEWPORT_W, nextOffset.x),
+      y: clampAxis(scaledHeight, VIEWPORT_H, nextOffset.y),
+    }
+  }
+
+  function constrainViewport(): void {
+    offset.value = clampOffset(scale.value, offset.value)
+  }
 
   /**
    * 初始化 Canvas
@@ -66,11 +92,12 @@ export function useCanvasRenderer() {
     const scaleY = VIEWPORT_H / imgH
     const s = Math.min(scaleX, scaleY) * 0.95 // 留 5% 边距
 
+    fitScale.value = s
     scale.value = s
-    offset.value = {
+    offset.value = clampOffset(s, {
       x: (VIEWPORT_W - imgW * s) / 2,
       y: (VIEWPORT_H - imgH * s) / 2,
-    }
+    })
   }
 
   /**
@@ -169,25 +196,25 @@ export function useCanvasRenderer() {
    */
   function zoomAt(delta: number, centerX: number, centerY: number): void {
     const oldScale = scale.value
-    const newScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, oldScale * (1 + delta)))
+    const newScale = Math.max(minScale.value, Math.min(MAX_SCALE, oldScale * (1 + delta)))
     if (newScale === oldScale) return
 
     // 锚点：center 对应的图片坐标在缩放前后不变
     const imgX = (centerX - offset.value.x) / oldScale
     const imgY = (centerY - offset.value.y) / oldScale
 
-    offset.value = {
+    scale.value = newScale
+    offset.value = clampOffset(newScale, {
       x: centerX - imgX * newScale,
       y: centerY - imgY * newScale,
-    }
-    scale.value = newScale
+    })
   }
 
   function pan(dx: number, dy: number): void {
-    offset.value = {
+    offset.value = clampOffset(scale.value, {
       x: offset.value.x + dx,
       y: offset.value.y + dy,
-    }
+    })
   }
 
   function fitToWidth(): void {
@@ -195,11 +222,12 @@ export function useCanvasRenderer() {
     if (imgW === 0) return
 
     const s = VIEWPORT_W / imgW
-    scale.value = Math.max(MIN_SCALE, Math.min(MAX_SCALE, s))
-    offset.value = {
+    const nextScale = Math.max(minScale.value, Math.min(MAX_SCALE, s))
+    scale.value = nextScale
+    offset.value = clampOffset(nextScale, {
       x: 0,
-      y: (VIEWPORT_H - imageSize.value.y * scale.value) / 2,
-    }
+      y: (VIEWPORT_H - imageSize.value.y * nextScale) / 2,
+    })
   }
 
   function fitToContainer(): void {
@@ -240,6 +268,7 @@ export function useCanvasRenderer() {
   function clearImage(): void {
     imageSize.value = { x: 0, y: 0 }
     imageSource.value = null
+    fitScale.value = 1
     scale.value = 1
     offset.value = { x: 0, y: 0 }
   }
@@ -257,6 +286,8 @@ export function useCanvasRenderer() {
     dpr,
     viewport,
     zoomPercent,
+    fitScale,
+    minScale,
 
     // Canvas 初始化
     initCanvas,
@@ -268,6 +299,7 @@ export function useCanvasRenderer() {
     // 渲染
     render,
     fitImageToViewport,
+    constrainViewport,
 
     // 坐标转换
     screenToImage,
