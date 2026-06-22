@@ -9,10 +9,11 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Body, Depends, Query, status
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.api.v1.error_response import build_error_response
 from app.core.config import get_settings
 from app.core.security import (
     ensure_project_capability,
@@ -78,7 +79,7 @@ def read_page(
     try:
         page = get_page_detail(db=db, page_public_id=page_id)
     except PageNotFoundError as exc:
-        return _error_response(
+        return build_error_response(
             status_code=status.HTTP_404_NOT_FOUND,
             code="PAGE_NOT_FOUND",
             message=str(exc),
@@ -107,7 +108,7 @@ def get_page_image_url(
     try:
         page_data = get_page_detail(db=db, page_public_id=page_id)
     except PageNotFoundError as exc:
-        return _error_response(
+        return build_error_response(
             status_code=status.HTTP_404_NOT_FOUND,
             code="PAGE_NOT_FOUND",
             message=str(exc),
@@ -152,7 +153,7 @@ def get_page_image_raw(
         nonce=nonce,
         sig=sig,
     ):
-        return _error_response(
+        return build_error_response(
             status_code=status.HTTP_401_UNAUTHORIZED,
             code="IMAGE_URL_EXPIRED",
             message="Image URL expired.",
@@ -171,14 +172,14 @@ def get_page_image_raw(
         )
     page = db.scalar(select(Page).where(Page.public_id == page_id))
     if not page:
-        return _error_response(
+        return build_error_response(
             status_code=status.HTTP_404_NOT_FOUND,
             code="PAGE_NOT_FOUND",
             message="Page not found",
             details={"page_id": page_id},
         )
     if not page.image_asset_id:
-        return _error_response(
+        return build_error_response(
             status_code=status.HTTP_404_NOT_FOUND,
             code="IMAGE_NOT_FOUND",
             message="Page has no image asset",
@@ -187,7 +188,7 @@ def get_page_image_raw(
 
     asset = db.get(Asset, page.image_asset_id)
     if not asset:
-        return _error_response(
+        return build_error_response(
             status_code=status.HTTP_404_NOT_FOUND,
             code="ASSET_NOT_FOUND",
             message="Asset not found",
@@ -197,7 +198,7 @@ def get_page_image_raw(
     settings = get_settings()
     file_path = Path(settings.storage_root) / asset.storage_path
     if not file_path.exists():
-        return _error_response(
+        return build_error_response(
             status_code=status.HTTP_404_NOT_FOUND,
             code="FILE_NOT_FOUND",
             message="Image file not found on disk",
@@ -225,7 +226,7 @@ def read_latest_annotation_revision(
     try:
         page = get_page_detail(db=db, page_public_id=page_id)
     except PageNotFoundError as exc:
-        return _error_response(
+        return build_error_response(
             status_code=status.HTTP_404_NOT_FOUND,
             code="PAGE_NOT_FOUND",
             message=str(exc),
@@ -245,7 +246,7 @@ def read_latest_annotation_revision(
             request_id=new_public_id("req"),
         )
     except StorageError as exc:
-        return _error_response(
+        return build_error_response(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             code="STORAGE_ERROR",
             message=str(exc),
@@ -279,7 +280,7 @@ def create_page_annotation_revision(
     try:
         page = get_page_detail(db=db, page_public_id=page_id)
     except PageNotFoundError as exc:
-        return _error_response(
+        return build_error_response(
             status_code=status.HTTP_404_NOT_FOUND,
             code="PAGE_NOT_FOUND",
             message=str(exc),
@@ -306,28 +307,28 @@ def create_page_annotation_revision(
         )
         result = get_annotation_revision(db=db, revision_public_id=revision.public_id)
     except InvalidAnnotationError as exc:
-        return _error_response(
+        return build_error_response(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             code="VALIDATION_ERROR",
             message=str(exc),
             details={"page_id": page_id},
         )
     except RevisionConflictError as exc:
-        return _error_response(
+        return build_error_response(
             status_code=status.HTTP_409_CONFLICT,
             code="REVISION_CONFLICT",
             message=str(exc),
             details={"page_id": page_id},
         )
     except PageNotFoundError as exc:
-        return _error_response(
+        return build_error_response(
             status_code=status.HTTP_404_NOT_FOUND,
             code="PAGE_NOT_FOUND",
             message=str(exc),
             details={"page_id": page_id},
         )
     except StorageError as exc:
-        return _error_response(
+        return build_error_response(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             code="STORAGE_ERROR",
             message=str(exc),
@@ -359,7 +360,7 @@ def list_page_annotation_revisions(
     try:
         page = get_page_detail(db=db, page_public_id=page_id)
     except PageNotFoundError as exc:
-        return _error_response(
+        return build_error_response(
             status_code=status.HTTP_404_NOT_FOUND,
             code="PAGE_NOT_FOUND",
             message=str(exc),
@@ -407,7 +408,7 @@ def read_page_annotation_revision(
     try:
         page = get_page_detail(db=db, page_public_id=page_id)
     except PageNotFoundError as exc:
-        return _error_response(
+        return build_error_response(
             status_code=status.HTTP_404_NOT_FOUND,
             code="PAGE_NOT_FOUND",
             message=str(exc),
@@ -424,14 +425,14 @@ def read_page_annotation_revision(
         if result["revision"].page_id != page["page_id"]:
             raise AnnotationRevisionNotFoundError(f"标注版本不存在：{revision_id}")
     except AnnotationRevisionNotFoundError as exc:
-        return _error_response(
+        return build_error_response(
             status_code=status.HTTP_404_NOT_FOUND,
             code="ANNOTATION_REVISION_NOT_FOUND",
             message=str(exc),
             details={"page_id": page_id, "revision_id": revision_id},
         )
     except StorageError as exc:
-        return _error_response(
+        return build_error_response(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             code="STORAGE_ERROR",
             message=str(exc),
@@ -459,7 +460,7 @@ def list_page_qc(
 ):
     page = db.scalar(select(Page).where(Page.public_id == page_id))
     if not page:
-        return _error_response(
+        return build_error_response(
             status_code=status.HTTP_404_NOT_FOUND,
             code="PAGE_NOT_FOUND",
             message="Page not found",
@@ -468,7 +469,7 @@ def list_page_qc(
 
     document = db.get(Document, page.document_id)
     if not document:
-        return _error_response(
+        return build_error_response(
             status_code=status.HTTP_404_NOT_FOUND,
             code="DOCUMENT_NOT_FOUND",
             message="Document not found for page",
@@ -517,7 +518,7 @@ def list_project_pages(
     """被 projects router 调用的内部函数：获取项目下所有页面。"""
     project = db.get(Project, project_id)
     if not project:
-        return _error_response(
+        return build_error_resp点击阅读模式会自动清空之前标注的onse(
             status_code=status.HTTP_404_NOT_FOUND,
             code="PROJECT_NOT_FOUND",
             message="Project not found",
@@ -614,26 +615,6 @@ def _consume_page_image_nonce(*, user_id: int, nonce: str, exp: int) -> bool:
         return False
     _PAGE_IMAGE_NONCE_CACHE[cache_key] = exp
     return True
-
-
-def _error_response(
-    *,
-    status_code: int,
-    code: str,
-    message: str,
-    details: dict[str, Any] | None = None,
-) -> JSONResponse:
-    return JSONResponse(
-        status_code=status_code,
-        content={
-            "error": {
-                "code": code,
-                "message": message,
-                "details": details or {},
-            },
-            "request_id": new_public_id("req"),
-        },
-    )
 
 
 def _extract_revision_payload(

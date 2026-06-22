@@ -10,6 +10,7 @@ export interface User {
   username: string
   display_name: string
   is_system_admin: boolean
+  password_must_change: boolean
 }
 
 export interface LoginRequest {
@@ -23,19 +24,37 @@ export interface LoginResponse {
   user: User
 }
 
-function adaptUser(raw: { id: number | string; username: string; display_name: string; is_system_admin?: boolean }): User {
+export interface ChangePasswordRequest {
+  current_password: string
+  new_password: string
+}
+
+function adaptUser(raw: {
+  id: number | string
+  username: string
+  display_name: string
+  is_system_admin?: boolean
+  password_must_change?: boolean
+}): User {
   return {
     id: String(raw.id),
     username: raw.username,
     display_name: raw.display_name,
     is_system_admin: raw.is_system_admin ?? false,
+    password_must_change: raw.password_must_change ?? false,
   }
 }
 
 export const authApi = {
   /** 获取当前用户信息 */
   me: async () => {
-    const raw = await api.get<{ id: number; username: string; display_name: string; is_system_admin: boolean }>('/auth/me')
+    const raw = await api.get<{
+      id: number
+      username: string
+      display_name: string
+      is_system_admin: boolean
+      password_must_change: boolean
+    }>('/auth/me')
     return adaptUser(raw)
   },
 
@@ -52,5 +71,16 @@ export const authApi = {
   logout: async () => {
     await api.post<void>('/auth/logout')
     clearToken()
+  },
+
+  changePassword: async (data: ChangePasswordRequest) => {
+    const raw = await api.post<{
+      id: number
+      username: string
+      display_name: string
+      is_system_admin: boolean
+      password_must_change: boolean
+    }>('/auth/change-password', data)
+    return adaptUser(raw)
   },
 }

@@ -78,6 +78,21 @@ export function useAuth() {
     return user.value !== null
   }
 
+  async function changePassword(currentPassword: string, newPassword: string): Promise<User> {
+    loading.value = true
+    try {
+      const updatedUser = await authApi.changePassword({
+        current_password: currentPassword,
+        new_password: newPassword,
+      })
+      user.value = updatedUser
+      initialized.value = true
+      return updatedUser
+    } finally {
+      loading.value = false
+    }
+  }
+
   /**
    * 确保会话已初始化
    * 路由守卫调用，避免每次都请求后端
@@ -96,6 +111,7 @@ export function useAuth() {
     initialized: readonly(initialized),
     fetchUser,
     login,
+    changePassword,
     logout,
     isAuthenticated,
     ensureSession,

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -17,6 +19,21 @@ class UserRead(BaseModel):
         ...,
         title="是否系统管理员",
         description="是否具备系统级用户管理能力；不代表项目内业务权限。",
+    )
+    last_login_at: datetime | None = Field(
+        None,
+        title="最近登录时间",
+        description="最近登录时间；从未登录时为 null。",
+    )
+    created_at: datetime | None = Field(
+        None,
+        title="创建时间",
+        description="用户创建时间。",
+    )
+    updated_at: datetime | None = Field(
+        None,
+        title="更新时间",
+        description="用户最后更新时间。",
     )
 
 
@@ -52,8 +69,8 @@ class UserCreateRequest(BaseModel):
     )
     temporary_password: str = Field(
         ...,
-        min_length=12,
-        max_length=256,
+        min_length=6,
+        max_length=128,
         title="临时密码",
         description="只用于本次创建请求；后端只保存哈希，不返回、不审计明文。",
     )
@@ -82,8 +99,8 @@ class UserUpdateRequest(BaseModel):
     )
     temporary_password: str | None = Field(
         None,
-        min_length=12,
-        max_length=256,
+        min_length=6,
+        max_length=128,
         title="临时密码",
         description="管理员重置的临时密码；不传表示不修改密码。",
     )

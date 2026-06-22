@@ -121,6 +121,9 @@ def test_list_users_returns_visible_users() -> None:
     body = response.json()
     assert body["data"][0]["id"] == 2
     assert body["data"][1]["is_system_admin"] is True
+    assert body["data"][0]["last_login_at"] is None
+    assert body["data"][0]["created_at"] is not None
+    assert body["data"][0]["updated_at"] is not None
     assert body["request_id"].startswith("req_")
 
 
@@ -150,8 +153,59 @@ def test_create_user_supports_assigning_system_admin_role(
     body = response.json()
     assert body["data"]["username"] == "admin2"
     assert body["data"]["is_system_admin"] is True
+    assert body["data"]["created_at"] is not None
+    assert body["data"]["updated_at"] is not None
     assert db.users[0].password_hash == "hashed::ChangeMe-123456"
     assert len(db.audit_logs) == 1
+
+
+def test_create_user_accepts_six_character_temporary_password(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db = FakeDb()
+    app = create_test_app(db, build_user(user_id=1, is_system_admin=True))
+    monkeypatch.setattr(
+        access_service, "hash_password", lambda password: f"hashed::{password}"
+    )
+
+    response = request(
+        app,
+        "POST",
+        "/api/v1/users",
+        json={
+            "username": "editor6",
+            "display_name": "六位密码用户",
+            "temporary_password": "abc123",
+            "email": "editor6@example.com",
+            "is_system_admin": False,
+        },
+    )
+
+    assert response.status_code == 201
+    assert db.users[0].password_hash == "hashed::abc123"
+
+
+def test_create_user_rejects_whitespace_only_temporary_password() -> None:
+    db = FakeDb()
+    app = create_test_app(db, build_user(user_id=1, is_system_admin=True))
+
+    response = request(
+        app,
+        "POST",
+        "/api/v1/users",
+        json={
+            "username": "invalid_pwd",
+            "display_name": "无效密码用户",
+            "temporary_password": "      ",
+            "email": "invalid@example.com",
+            "is_system_admin": False,
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "VALIDATION_ERROR"
+    assert response.json()["error"]["message"] == "字段不能为空。"
+    assert db.users == []
 
 
 def test_update_user_updates_profile_and_password(
@@ -181,10 +235,56 @@ def test_update_user_updates_profile_and_password(
     assert body["data"]["display_name"] == "新显示名"
     assert body["data"]["email"] is None
     assert body["data"]["is_system_admin"] is True
+    assert body["data"]["created_at"] is not None
+    assert body["data"]["updated_at"] is not None
     assert target_user.display_name == "新显示名"
     assert target_user.email is None
     assert target_user.password_hash == "hashed::ChangeMe-654321"
     assert len(db.audit_logs) == 1
+
+
+def test_update_user_keeps_omitted_optional_fields_unchanged() -> None:
+    target_user = build_user(user_id=2, is_system_admin=True, status="active")
+    original_password_hash = target_user.password_hash
+    original_email = target_user.email
+    db = FakeDb(users=[target_user])
+    app = create_test_app(db, build_user(user_id=1, is_system_admin=True))
+
+    response = request(
+        app,
+        "PATCH",
+        "/api/v1/users/2",
+        json={"display_name": "仅改显示名"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["data"]["display_name"] == "仅改显示名"
+    assert body["data"]["email"] == original_email
+    assert body["data"]["is_system_admin"] is True
+    assert target_user.display_name == "仅改显示名"
+    assert target_user.email == original_email
+    assert target_user.is_system_admin is True
+    assert target_user.password_hash == original_password_hash
+
+
+def test_update_user_rejects_temporary_password_shorter_than_six_after_trim() -> None:
+    target_user = build_user(user_id=2, is_system_admin=False, status="active")
+    original_password_hash = target_user.password_hash
+    db = FakeDb(users=[target_user])
+    app = create_test_app(db, build_user(user_id=1, is_system_admin=True))
+
+    response = request(
+        app,
+        "PATCH",
+        "/api/v1/users/2",
+        json={"temporary_password": "   abcde   "},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "VALIDATION_ERROR"
+    assert response.json()["error"]["message"] == "密码长度不能少于 6 个字符。"
+    assert target_user.password_hash == original_password_hash
 
 
 def test_disable_user_updates_status() -> None:
@@ -218,7 +318,7 @@ def test_system_admin_cannot_disable_self() -> None:
 
     response = request(app, "POST", "/api/v1/users/1/disable")
 
-    assert response.status_code == 400
+    assert response.status_code == 422
     assert response.json()["error"]["code"] == "VALIDATION_ERROR"
     assert response.json()["error"]["message"] == "You cannot disable your own account."
     assert current_user.status == "active"
@@ -236,7 +336,7 @@ def test_system_admin_cannot_remove_own_system_role() -> None:
         json={"is_system_admin": False},
     )
 
-    assert response.status_code == 400
+    assert response.status_code == 422
     assert response.json()["error"]["code"] == "VALIDATION_ERROR"
     assert (
         response.json()["error"]["message"]
@@ -257,7 +357,7 @@ def test_last_active_system_admin_cannot_be_demoted() -> None:
         json={"is_system_admin": False},
     )
 
-    assert response.status_code == 400
+    assert response.status_code == 422
     assert response.json()["error"]["code"] == "VALIDATION_ERROR"
     assert (
         response.json()["error"]["message"]

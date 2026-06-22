@@ -23,6 +23,9 @@ interface RawSystemUser {
   email: string | null
   status: 'active' | 'disabled' | 'pending'
   is_system_admin: boolean
+  last_login_at: string | null
+  created_at: string | null
+  updated_at: string | null
 }
 
 export interface SystemUserListResponse {
@@ -49,9 +52,6 @@ function adaptUser(raw: RawSystemUser): SystemUser {
   return {
     ...raw,
     id: String(raw.id),
-    last_login_at: null,
-    created_at: null,
-    updated_at: null,
   }
 }
 

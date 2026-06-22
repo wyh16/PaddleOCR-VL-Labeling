@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Any
 
 import pytest
@@ -74,6 +75,7 @@ def create_test_client(
 
 
 def sample_member_response() -> Any:
+    now = datetime.now(UTC)
     user = type(
         "UserSummary",
         (),
@@ -84,6 +86,9 @@ def sample_member_response() -> Any:
             "email": None,
             "status": "active",
             "is_system_admin": False,
+            "last_login_at": None,
+            "created_at": now,
+            "updated_at": now,
         },
     )()
     return type(
@@ -213,6 +218,7 @@ def test_non_system_admin_cannot_manage_users(monkeypatch: Any) -> None:
     )
 
     list_response = client.get("/api/v1/users")
+    roles_response = client.get("/api/v1/roles")
     create_response = client.post(
         "/api/v1/users",
         json={
@@ -226,6 +232,7 @@ def test_non_system_admin_cannot_manage_users(monkeypatch: Any) -> None:
     disable_response = client.post("/api/v1/users/20/disable")
 
     assert list_response.status_code == 403
+    assert roles_response.status_code == 403
     assert create_response.status_code == 403
     assert disable_response.status_code == 403
 
@@ -245,6 +252,9 @@ def test_user_management_endpoints_check_system_user_capability(
             "email": None,
             "status": "active",
             "is_system_admin": False,
+            "last_login_at": None,
+            "created_at": datetime.now(UTC),
+            "updated_at": datetime.now(UTC),
         },
     )()
 
@@ -257,10 +267,12 @@ def test_user_management_endpoints_check_system_user_capability(
         record_system_capability,
     )
     monkeypatch.setattr(access_endpoint, "list_users", lambda **_kwargs: [])
+    monkeypatch.setattr(access_endpoint, "list_roles", lambda **_kwargs: [])
     monkeypatch.setattr(access_endpoint, "create_user", lambda **_kwargs: user_summary)
     monkeypatch.setattr(access_endpoint, "disable_user", lambda **_kwargs: user_summary)
 
     list_response = client.get("/api/v1/users")
+    roles_response = client.get("/api/v1/roles")
     create_response = client.post(
         "/api/v1/users",
         json={
@@ -274,9 +286,11 @@ def test_user_management_endpoints_check_system_user_capability(
     disable_response = client.post("/api/v1/users/20/disable")
 
     assert list_response.status_code == 200
+    assert roles_response.status_code == 200
     assert create_response.status_code == 201
     assert disable_response.status_code == 200
     assert checked_capabilities == [
+        "can_manage_system_users",
         "can_manage_system_users",
         "can_manage_system_users",
         "can_manage_system_users",
@@ -297,6 +311,9 @@ def test_system_admin_can_create_user_without_returning_password(
             "email": "new_user@example.com",
             "status": "active",
             "is_system_admin": False,
+            "last_login_at": None,
+            "created_at": datetime.now(UTC),
+            "updated_at": datetime.now(UTC),
         },
     )()
     monkeypatch.setattr(
@@ -327,6 +344,9 @@ def test_system_admin_can_create_user_without_returning_password(
         "email": "new_user@example.com",
         "status": "active",
         "is_system_admin": False,
+        "last_login_at": None,
+        "created_at": payload["data"]["created_at"],
+        "updated_at": payload["data"]["updated_at"],
     }
     assert "temporary_password" not in str(payload)
     assert "password_hash" not in str(payload)
@@ -373,6 +393,9 @@ def test_disable_user_endpoint_returns_wrapped_success_response(
             "email": None,
             "status": "disabled",
             "is_system_admin": False,
+            "last_login_at": None,
+            "created_at": datetime.now(UTC),
+            "updated_at": datetime.now(UTC),
         },
     )()
     monkeypatch.setattr(
@@ -421,6 +444,24 @@ def test_add_project_member_maps_inactive_user_to_422(monkeypatch: Any) -> None:
     assert response.json()["error"]["code"] == "VALIDATION_ERROR"
 
 
+def test_read_roles_requires_system_user_capability(monkeypatch: Any) -> None:
+    client = create_test_client(
+        monkeypatch,
+        current_user=User(
+            id=100,
+            username="annotator",
+            display_name="普通用户",
+            status="active",
+            is_system_admin=False,
+        ),
+    )
+
+    response = client.get("/api/v1/roles")
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Permission denied."
+
+
 def test_disable_or_remove_missing_member_returns_404(monkeypatch: Any) -> None:
     client = create_test_client(monkeypatch)
     monkeypatch.setattr(
@@ -445,6 +486,34 @@ def test_disable_or_remove_missing_member_returns_404(monkeypatch: Any) -> None:
     assert disable_response.json()["error"]["code"] == "PROJECT_MEMBER_NOT_FOUND"
     assert remove_response.status_code == 404
     assert remove_response.json()["error"]["code"] == "PROJECT_MEMBER_NOT_FOUND"
+
+
+def test_disable_or_remove_member_maps_validation_error_to_422(
+    monkeypatch: Any,
+) -> None:
+    client = create_test_client(monkeypatch)
+    monkeypatch.setattr(
+        access_endpoint,
+        "disable_project_member",
+        lambda **_kwargs: (_ for _ in ()).throw(
+            AccessValidationError("只能禁用 active 项目成员。")
+        ),
+    )
+    monkeypatch.setattr(
+        access_endpoint,
+        "remove_project_member",
+        lambda **_kwargs: (_ for _ in ()).throw(
+            AccessValidationError("只能移除 active 项目成员。")
+        ),
+    )
+
+    disable_response = client.post("/api/v1/projects/10/members/7/disable")
+    remove_response = client.delete("/api/v1/projects/10/members/7")
+
+    assert disable_response.status_code == 422
+    assert disable_response.json()["error"]["code"] == "VALIDATION_ERROR"
+    assert remove_response.status_code == 422
+    assert remove_response.json()["error"]["code"] == "VALIDATION_ERROR"
 
 
 def test_grant_system_role_maps_validation_error_to_422(monkeypatch: Any) -> None:
@@ -480,6 +549,22 @@ def test_revoke_unbound_role_maps_not_found_to_404(monkeypatch: Any) -> None:
 
     assert response.status_code == 404
     assert response.json()["error"]["code"] == "ROLE_OR_MEMBER_NOT_FOUND"
+
+
+def test_enable_user_maps_validation_error_to_422(monkeypatch: Any) -> None:
+    client = create_test_client(monkeypatch)
+    monkeypatch.setattr(
+        access_endpoint,
+        "enable_user",
+        lambda **_kwargs: (_ for _ in ()).throw(
+            AccessValidationError("只能启用 disabled 用户。")
+        ),
+    )
+
+    response = client.post("/api/v1/users/20/enable")
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "VALIDATION_ERROR"
 
 
 def test_missing_member_or_role_request_body_returns_422(monkeypatch: Any) -> None:

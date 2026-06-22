@@ -71,30 +71,18 @@ async function handleLogin() {
 
       <label class="block">
         <span class="mb-1 block text-caption text-text-secondary">{{ t('auth.username') }}</span>
-        <input
-          v-model="username"
-          :placeholder="t('auth.username')"
-          :disabled="loading"
-          class="h-9 w-full rounded-md border border-border bg-surface px-3 text-body text-text outline-none transition-colors placeholder:text-text-muted focus:border-primary disabled:cursor-not-allowed disabled:bg-surface-muted"
-        />
+        <input v-model="username" :placeholder="t('auth.username')" :disabled="loading"
+          class="h-9 w-full rounded-md border border-border bg-surface px-3 text-body text-text outline-none transition-colors placeholder:text-text-muted focus:border-primary disabled:cursor-not-allowed disabled:bg-surface-muted" />
       </label>
 
       <label class="block">
         <span class="mb-1 block text-caption text-text-secondary">{{ t('auth.password') }}</span>
-        <input
-          v-model="password"
-          type="password"
-          :placeholder="t('auth.password')"
-          :disabled="loading"
-          class="h-9 w-full rounded-md border border-border bg-surface px-3 text-body text-text outline-none transition-colors placeholder:text-text-muted focus:border-primary disabled:cursor-not-allowed disabled:bg-surface-muted"
-        />
+        <input v-model="password" type="password" :placeholder="t('auth.password')" :disabled="loading"
+          class="h-9 w-full rounded-md border border-border bg-surface px-3 text-body text-text outline-none transition-colors placeholder:text-text-muted focus:border-primary disabled:cursor-not-allowed disabled:bg-surface-muted" />
       </label>
 
-      <button
-        type="submit"
-        :disabled="loading || !username || !password"
-        class="inline-flex w-full items-center justify-center rounded-md bg-primary px-4 py-2 text-caption font-medium text-white transition-colors hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50"
-      >
+      <button type="submit" :disabled="loading || !username || !password"
+        class="inline-flex w-full items-center justify-center rounded-md bg-primary px-4 py-2 text-caption font-medium text-white transition-colors hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50">
         {{ t('auth.login') }}
       </button>
     </form>

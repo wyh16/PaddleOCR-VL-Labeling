@@ -14,6 +14,25 @@ class AccessRepository:
         stmt = select(User).where(User.deleted_at.is_(None)).order_by(User.id)
         return db.scalars(stmt).all()
 
+    def list_active_system_admins(
+        self,
+        db: Session,
+        *,
+        lock_for_update: bool = False,
+    ) -> list[User]:
+        stmt = (
+            select(User)
+            .where(
+                User.deleted_at.is_(None),
+                User.is_system_admin.is_(True),
+                User.status == "active",
+            )
+            .order_by(User.id)
+        )
+        if lock_for_update:
+            stmt = stmt.with_for_update()
+        return db.scalars(stmt).all()
+
     def get_user(self, db: Session, user_id: int) -> User | None:
         stmt = select(User).where(User.id == user_id, User.deleted_at.is_(None))
         return db.scalar(stmt)

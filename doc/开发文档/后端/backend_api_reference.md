@@ -169,7 +169,7 @@ Authorization: Bearer <access_token>
 | `PATCH` | `/api/v1/users/{user_id}` | 是 | 已实现 | 具备 `can_manage_system_users` 的用户更新用户资料、邮箱、临时密码和系统管理员标记。 |
 | `POST` | `/api/v1/users/{user_id}/disable` | 是 | 已实现 | 具备 `can_manage_system_users` 的用户禁用用户。 |
 | `POST` | `/api/v1/users/{user_id}/enable` | 是 | 已实现 | 具备 `can_manage_system_users` 的用户重新启用用户。 |
-| `GET` | `/api/v1/roles` | 是 | 已实现 | 查询内置角色及 capabilities。 |
+| `GET` | `/api/v1/roles` | 是 | 已实现 | 具备 `can_manage_system_users` 的用户查询内置角色及 capabilities。 |
 | `GET` | `/api/v1/projects/{project_id}/members` | 是 | 已实现 | 查询项目成员，需要 `can_manage_project_members`。 |
 | `POST` | `/api/v1/projects/{project_id}/members` | 是 | 已实现 | 添加项目成员，需要 `can_manage_project_members`。 |
 | `POST` | `/api/v1/projects/{project_id}/members/{member_id}/disable` | 是 | 已实现 | 禁用项目成员，需要 `can_manage_project_members`。 |
@@ -215,7 +215,9 @@ Content-Type: application/json
   "user": {
     "id": 1,
     "username": "annotator",
-    "display_name": "标注员"
+    "display_name": "标注员",
+    "is_system_admin": false,
+    "password_must_change": true
   }
 }
 ```
@@ -228,6 +230,8 @@ Content-Type: application/json
 | `user.id` | integer | 用户数据库内部主键。 |
 | `user.username` | string | 登录用户名。 |
 | `user.display_name` | string | 用户显示名称。 |
+| `user.is_system_admin` | boolean | 是否系统管理员。 |
+| `user.password_must_change` | boolean | 管理员创建或重置密码后的状态标记；当前前端不会强制拦截业务访问，用户可自行前往设置页修改密码。 |
 
 Cookie：
 
@@ -273,8 +277,73 @@ Cookie: k12_access_token=...
 {
   "id": 1,
   "username": "annotator",
-  "display_name": "标注员"
+  "display_name": "标注员",
+  "is_system_admin": false,
+  "password_must_change": true
 }
+```
+
+字段说明：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | integer | 用户数据库内部主键。 |
+| `username` | string | 登录用户名。 |
+| `display_name` | string | 用户显示名称。 |
+| `is_system_admin` | boolean | 是否系统管理员。 |
+| `password_must_change` | boolean | 管理员创建或重置密码后的状态标记；当前不强制用户立刻修改密码。 |
+
+错误：
+
+| HTTP 状态码 | 场景 |
+|---|---|
+| `401` | token 缺失、无效或已过期。 |
+
+### 4.4 修改当前用户密码
+
+```http
+POST /api/v1/auth/change-password
+Cookie: k12_access_token=...
+Content-Type: application/json
+```
+
+鉴权：需要登录。
+
+请求体：
+
+```json
+{
+  "current_password": "temp123",
+  "new_password": "newpass1"
+}
+```
+
+字段说明：
+
+| 字段 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `current_password` | string | 是 | 当前登录密码。 |
+| `new_password` | string | 是 | 新密码；服务端会 trim 前后空白并要求至少 6 个字符。 |
+
+成功响应：
+
+```json
+{
+  "id": 1,
+  "username": "annotator",
+  "display_name": "标注员",
+  "is_system_admin": false,
+  "password_must_change": false
+}
+```
+
+行为说明：
+
+```text
+1. 接口只允许修改当前登录用户自己的密码。
+2. 修改成功后会更新 password_hash，并把 password_must_change 置为 false。
+3. 当前密码错误或新密码不合法时，返回 422。
+4. 当前版本不会因为 password_must_change=true 而强制阻断业务访问；该接口作为用户自助改密入口保留。
 ```
 
 错误：
@@ -282,6 +351,7 @@ Cookie: k12_access_token=...
 | HTTP 状态码 | 场景 |
 |---|---|
 | `401` | token 缺失、无效或已过期。 |
+| `422` | 当前密码错误，或新密码为空/长度不足/超过最大长度。 |
 
 ---
 
@@ -1280,7 +1350,10 @@ MVP 阶段该 capability 由 `current_user.is_system_admin=true` 推导。
       "display_name": "标注员",
       "email": null,
       "status": "active",
-      "is_system_admin": false
+      "is_system_admin": false,
+      "last_login_at": "2026-06-22T09:30:00Z",
+      "created_at": "2026-06-20T12:00:00Z",
+      "updated_at": "2026-06-22T09:30:00Z"
     }
   ],
   "request_id": "req_xxx"
@@ -1291,7 +1364,8 @@ MVP 阶段该 capability 由 `current_user.is_system_admin=true` 推导。
 
 ```text
 1. 当前返回未软删除用户。
-2. 不返回 password_hash 等认证敏感字段。
+2. 返回 last_login_at、created_at、updated_at，方便前端展示登录与创建时间。
+3. 不返回 password_hash 等认证敏感字段。
 ```
 
 #### 9.3.2 创建用户
@@ -1329,7 +1403,7 @@ MVP 阶段该 capability 由 `current_user.is_system_admin=true` 推导。
 | `username` | string | 是 | 登录用户名。服务端会 trim、转小写，并限制为 3-64 位小写字母、数字、下划线、点或连字符，且必须以字母或数字开头。 |
 | `display_name` | string | 是 | 页面展示名称。 |
 | `email` | string/null | 否 | 用户邮箱。填写时服务端会 trim、转小写、校验格式，并要求未被其他未软删除用户使用。 |
-| `temporary_password` | string | 是 | 管理员设置的临时密码。只用于本次请求参与哈希，不进入响应、日志或审计 details。 |
+| `temporary_password` | string | 是 | 管理员设置的临时密码。服务端会 trim 前后空白并要求至少 6 个字符；只用于本次请求参与哈希，不进入响应、日志或审计 details。 |
 | `is_system_admin` | boolean | 否 | 是否创建为系统管理员。普通实验室成员应为 `false`。 |
 
 成功响应：`201`
@@ -1342,7 +1416,10 @@ MVP 阶段该 capability 由 `current_user.is_system_admin=true` 推导。
     "display_name": "新用户",
     "email": "new_user@example.com",
     "status": "active",
-    "is_system_admin": false
+    "is_system_admin": false,
+    "last_login_at": null,
+    "created_at": "2026-06-22T10:00:00Z",
+    "updated_at": "2026-06-22T10:00:00Z"
   },
   "request_id": "req_xxx"
 }
@@ -1390,7 +1467,7 @@ MVP 阶段该 capability 由 `current_user.is_system_admin=true` 推导。
 |---|---|---|---|
 | `display_name` | string/null | 否 | 新的显示名称；省略表示保持原值。 |
 | `email` | string/null | 否 | 新的邮箱；传 `null` 表示清空，省略表示保持原值。 |
-| `temporary_password` | string/null | 否 | 管理员重置的临时密码；传入时会更新密码哈希并把 `password_must_change` 设为 `true`。 |
+| `temporary_password` | string/null | 否 | 管理员重置的临时密码；服务端会 trim 前后空白并要求至少 6 个字符；传入时会更新密码哈希并把 `password_must_change` 设为 `true`。 |
 | `is_system_admin` | boolean/null | 否 | 是否更新为系统管理员；省略表示保持原值。 |
 
 成功响应：`200`
@@ -1403,7 +1480,10 @@ MVP 阶段该 capability 由 `current_user.is_system_admin=true` 推导。
     "display_name": "新显示名",
     "email": null,
     "status": "active",
-    "is_system_admin": false
+    "is_system_admin": false,
+    "last_login_at": "2026-06-22T09:30:00Z",
+    "created_at": "2026-06-20T12:00:00Z",
+    "updated_at": "2026-06-22T10:05:00Z"
   },
   "request_id": "req_xxx"
 }
@@ -1445,7 +1525,10 @@ MVP 阶段该 capability 由 `current_user.is_system_admin=true` 推导。
     "display_name": "标注员",
     "email": null,
     "status": "disabled",
-    "is_system_admin": false
+    "is_system_admin": false,
+    "last_login_at": "2026-06-22T09:30:00Z",
+    "created_at": "2026-06-20T12:00:00Z",
+    "updated_at": "2026-06-22T10:10:00Z"
   },
   "request_id": "req_xxx"
 }
@@ -1492,7 +1575,10 @@ MVP 阶段该 capability 由 `current_user.is_system_admin=true` 推导。
     "display_name": "标注员",
     "email": null,
     "status": "active",
-    "is_system_admin": false
+    "is_system_admin": false,
+    "last_login_at": "2026-06-22T09:30:00Z",
+    "created_at": "2026-06-20T12:00:00Z",
+    "updated_at": "2026-06-22T10:15:00Z"
   },
   "request_id": "req_xxx"
 }
@@ -1516,7 +1602,8 @@ Authorization: Bearer <access_token>
 权限：
 
 ```text
-需要登录，不要求 system_admin 或项目 capability。
+需要 `can_manage_system_users`。
+MVP 阶段该 capability 由 `current_user.is_system_admin=true` 推导。
 ```
 
 成功响应：
@@ -1542,6 +1629,7 @@ Authorization: Bearer <access_token>
 1. 只返回 active 且 builtin 的角色。
 2. 列表按 scope、code 稳定排序。
 3. 当前不提供自定义角色创建、编辑或停用接口。
+4. 该接口当前只对系统用户管理场景开放，避免向普通登录用户暴露 system 级角色和 capability 名称。
 ```
 
 ### 9.4 项目成员管理
@@ -1576,7 +1664,10 @@ Authorization: Bearer <access_token>
         "display_name": "标注员",
         "email": null,
         "status": "active",
-        "is_system_admin": false
+        "is_system_admin": false,
+        "last_login_at": "2026-06-22T09:30:00Z",
+        "created_at": "2026-06-20T12:00:00Z",
+        "updated_at": "2026-06-22T09:30:00Z"
       },
       "member_status": "active",
       "roles": ["annotator"]
@@ -1589,7 +1680,8 @@ Authorization: Bearer <access_token>
 实现说明：
 
 ```text
-当前返回该项目下全部 project_members 记录，包括 active、disabled 和 removed 成员。
+1. 当前返回该项目下全部 project_members 记录，包括 active、disabled 和 removed 成员。
+2. 如果成员关联用户已被软删除或丢失，列表会跳过该条孤儿记录，而不是整表报错。
 ```
 
 #### 9.4.2 添加项目成员
@@ -1785,8 +1877,8 @@ M4a service 层业务错误使用统一结构：
 | `404` | `USER_NOT_FOUND` | 更新、启用、禁用用户或添加项目成员时，目标用户不存在。 | `user_id` |
 | `404` | `PROJECT_MEMBER_NOT_FOUND` | 查询、禁用、移除成员，或查询成员角色时，项目成员不存在。 | `member_id` |
 | `404` | `ROLE_OR_MEMBER_NOT_FOUND` | 授予/撤销角色时，成员不存在、角色不存在、角色 inactive，或撤销未绑定角色。 | `member_id`, `role_code` |
-| `400` | `VALIDATION_ERROR` | 更新/禁用用户触发系统管理员保护规则，例如自我降级、自我禁用或最后一个 active system_admin 保护。 | `user_id` |
-| `422` | `VALIDATION_ERROR` | 创建用户输入不合法或用户名/邮箱重复、添加非 active 用户、给 disabled / removed 成员授予角色、把 system role 绑定到项目成员。 | `username`, `email`, `user_id` 或 `member_id`, `role_code` |
+| `422` | `VALIDATION_ERROR` | 更新/启用/禁用用户触发访问管理校验规则，例如系统管理员保护。 | `user_id` |
+| `422` | `VALIDATION_ERROR` | 创建用户输入不合法、用户名/邮箱重复、添加非 active 用户、禁用/移除成员时触发成员状态校验、给 disabled / removed 成员授予角色、把 system role 绑定到项目成员。 | `username`, `email`, `user_id` 或 `member_id`, `role_code` |
 
 当前仍使用 FastAPI 默认 `detail` 的场景：
 

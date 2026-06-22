@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
+from app.api.v1.error_response import build_error_response
 from app.core.security import (
     ensure_project_capability,
     ensure_system_capability,
@@ -87,7 +88,7 @@ def create_user_account(
         )
         return UserResponse(data=_user_read(user), request_id=new_public_id("req"))
     except AccessValidationError as exc:
-        return _error_response(
+        return build_error_response(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             code="VALIDATION_ERROR",
             message=str(exc),
@@ -119,15 +120,15 @@ def update_user_account(
         )
         return UserResponse(data=_user_read(user), request_id=new_public_id("req"))
     except AccessNotFoundError as exc:
-        return _error_response(
+        return build_error_response(
             status_code=status.HTTP_404_NOT_FOUND,
             code="USER_NOT_FOUND",
             message=str(exc),
             details={"user_id": user_id},
         )
     except AccessValidationError as exc:
-        return _error_response(
-            status_code=status.HTTP_400_BAD_REQUEST,
+        return build_error_response(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             code="VALIDATION_ERROR",
             message=str(exc),
             details={"user_id": user_id},
@@ -153,15 +154,15 @@ def disable_user_account(
         )
         return UserResponse(data=_user_read(user), request_id=new_public_id("req"))
     except AccessNotFoundError as exc:
-        return _error_response(
+        return build_error_response(
             status_code=status.HTTP_404_NOT_FOUND,
             code="USER_NOT_FOUND",
             message=str(exc),
             details={"user_id": user_id},
         )
     except AccessValidationError as exc:
-        return _error_response(
-            status_code=status.HTTP_400_BAD_REQUEST,
+        return build_error_response(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             code="VALIDATION_ERROR",
             message=str(exc),
             details={"user_id": user_id},
@@ -187,9 +188,16 @@ def enable_user_account(
         )
         return UserResponse(data=_user_read(user), request_id=new_public_id("req"))
     except AccessNotFoundError as exc:
-        return _error_response(
+        return build_error_response(
             status_code=status.HTTP_404_NOT_FOUND,
             code="USER_NOT_FOUND",
+            message=str(exc),
+            details={"user_id": user_id},
+        )
+    except AccessValidationError as exc:
+        return build_error_response(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            code="VALIDATION_ERROR",
             message=str(exc),
             details={"user_id": user_id},
         )
@@ -198,8 +206,9 @@ def enable_user_account(
 @router.get("/roles", response_model=RoleListResponse, summary="查询内置角色")
 def read_roles(
     db: Session = Depends(get_db_session),
-    _current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ) -> RoleListResponse:
+    _ensure_can_manage_system_users(current_user)
     return RoleListResponse(
         data=[_role_read(item) for item in list_roles(db=db)],
         request_id=new_public_id("req"),
@@ -251,14 +260,14 @@ def create_project_member(
             actor_id=current_user.id,
         )
     except AccessNotFoundError as exc:
-        return _error_response(
+        return build_error_response(
             status_code=status.HTTP_404_NOT_FOUND,
             code="USER_NOT_FOUND",
             message=str(exc),
             details={"user_id": payload.user_id},
         )
     except AccessValidationError as exc:
-        return _error_response(
+        return build_error_response(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             code="VALIDATION_ERROR",
             message=str(exc),
@@ -291,9 +300,16 @@ def disable_member(
             actor_id=current_user.id,
         )
     except AccessNotFoundError as exc:
-        return _error_response(
+        return build_error_response(
             status_code=status.HTTP_404_NOT_FOUND,
             code="PROJECT_MEMBER_NOT_FOUND",
+            message=str(exc),
+            details={"member_id": member_id},
+        )
+    except AccessValidationError as exc:
+        return build_error_response(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            code="VALIDATION_ERROR",
             message=str(exc),
             details={"member_id": member_id},
         )
@@ -324,9 +340,16 @@ def delete_project_member(
             actor_id=current_user.id,
         )
     except AccessNotFoundError as exc:
-        return _error_response(
+        return build_error_response(
             status_code=status.HTTP_404_NOT_FOUND,
             code="PROJECT_MEMBER_NOT_FOUND",
+            message=str(exc),
+            details={"member_id": member_id},
+        )
+    except AccessValidationError as exc:
+        return build_error_response(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            code="VALIDATION_ERROR",
             message=str(exc),
             details={"member_id": member_id},
         )
@@ -356,7 +379,7 @@ def read_member_roles(
             member_id=member_id,
         )
     except AccessNotFoundError as exc:
-        return _error_response(
+        return build_error_response(
             status_code=status.HTTP_404_NOT_FOUND,
             code="PROJECT_MEMBER_NOT_FOUND",
             message=str(exc),
@@ -390,14 +413,14 @@ def grant_member_role(
             actor_id=current_user.id,
         )
     except AccessNotFoundError as exc:
-        return _error_response(
+        return build_error_response(
             status_code=status.HTTP_404_NOT_FOUND,
             code="ROLE_OR_MEMBER_NOT_FOUND",
             message=str(exc),
             details={"member_id": member_id, "role_code": payload.role_code},
         )
     except AccessValidationError as exc:
-        return _error_response(
+        return build_error_response(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             code="VALIDATION_ERROR",
             message=str(exc),
@@ -430,14 +453,14 @@ def revoke_member_role(
             actor_id=current_user.id,
         )
     except AccessNotFoundError as exc:
-        return _error_response(
+        return build_error_response(
             status_code=status.HTTP_404_NOT_FOUND,
             code="ROLE_OR_MEMBER_NOT_FOUND",
             message=str(exc),
             details={"member_id": member_id, "role_code": role_code},
         )
     except AccessValidationError as exc:
-        return _error_response(
+        return build_error_response(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             code="VALIDATION_ERROR",
             message=str(exc),
@@ -467,26 +490,6 @@ def _ensure_can_manage_project_members(
     )
 
 
-def _error_response(
-    *,
-    status_code: int,
-    code: str,
-    message: str,
-    details: dict[str, Any] | None = None,
-) -> JSONResponse:
-    return JSONResponse(
-        status_code=status_code,
-        content={
-            "error": {
-                "code": code,
-                "message": message,
-                "details": details or {},
-            },
-            "request_id": new_public_id("req"),
-        },
-    )
-
-
 def _user_read(value: Any) -> UserRead:
     return UserRead(
         id=value.id,
@@ -495,6 +498,9 @@ def _user_read(value: Any) -> UserRead:
         email=value.email,
         status=value.status,
         is_system_admin=value.is_system_admin,
+        last_login_at=value.last_login_at,
+        created_at=value.created_at,
+        updated_at=value.updated_at,
     )
 
 
