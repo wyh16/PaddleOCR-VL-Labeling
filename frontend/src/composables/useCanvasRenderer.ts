@@ -164,16 +164,6 @@ export function useCanvasRenderer() {
   }
 
   /**
-   * 屏幕坐标 → 视口坐标（不做边界检查）
-   *
-   * 用于标注绘制：鼠标事件坐标直接就是视口坐标（Canvas 逻辑像素），
-   * 标注 SVG 的 viewBox 与 Canvas 逻辑尺寸一致，所以直接透传。
-   */
-  function screenToViewport(screenX: number, screenY: number): Point {
-    return { x: screenX, y: screenY }
-  }
-
-  /**
    * 原图坐标 → 视口坐标
    *
    * 用于将存储的标注坐标（原图像素）转换为 SVG 绘制坐标（视口像素）。
@@ -303,7 +293,6 @@ export function useCanvasRenderer() {
 
     // 坐标转换
     screenToImage,
-    screenToViewport,
     imageToViewport,
 
     // 缩放操作
