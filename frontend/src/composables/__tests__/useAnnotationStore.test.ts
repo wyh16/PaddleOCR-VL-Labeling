@@ -118,6 +118,65 @@ describe('useAnnotationStore', () => {
     expect(store.objects.value[0].geometry.bbox_xyxy).toEqual([0, 0, 200, 120])
   })
 
+  it('read_order 完整 round trip：加载（后端 0→前端 1）、点击排序、保存（前端 1→后端 0）', () => {
+    const store = useAnnotationStore()
+    store.setImageBounds(200, 200)
+
+    const first = store.addObject([10, 10, 100, 100], { name: 'question_block', namespace: 'k12' })
+    const second = store.addObject([110, 110, 200, 200], { name: 'question_block', namespace: 'k12' })
+
+    // 模拟从后端加载已有 read_order 的 revision
+    store.loadFromRevision({
+      id: 'rev_load_001',
+      page_id: 'page_roundtrip',
+      revision_no: 1,
+      status: 'draft',
+      qc_status: 'pending',
+      data: {
+        schema_version: 'k12_annotation_v0.1',
+        page_id: 'page_roundtrip',
+        k12_annotations: [
+          { ...first, read_order: 0 },
+          { ...second, read_order: 1 },
+        ],
+        relations: [],
+      },
+    })
+
+    expect(store.baseRevisionId.value).toBe('rev_load_001')
+    expect(store.objects.value[0].read_order).toBe(1)
+    expect(store.objects.value[1].read_order).toBe(2)
+
+    // 模拟 read_order 模式点击排序
+    store.startReadOrderSession()
+    const assigned1 = store.assignNextReadOrder(first.id)
+    expect(assigned1).toBe(1)
+    const assigned2 = store.assignNextReadOrder(second.id)
+    expect(assigned2).toBe(2)
+
+    // 模拟再次点击第一个取消排序
+    const removed1 = store.assignNextReadOrder(first.id)
+    expect(removed1).toBe(1)
+    expect(store.objects.value[0].read_order).toBeUndefined()
+    expect(store.objects.value[1].read_order).toBe(1)
+
+    // 再次点击第一个重新排序
+    const reassigned1 = store.assignNextReadOrder(first.id)
+    expect(reassigned1).toBe(2)
+    expect(store.objects.value[0].read_order).toBe(2)
+    expect(store.objects.value[1].read_order).toBe(1)
+
+    // 模拟保存，输出应为后端 0-based
+    const draft = store.toDraft('page_roundtrip')
+    const anns = (draft.data as any).k12_annotations as any[]
+    expect(draft.base_revision_id).toBe('rev_load_001')
+
+    const firstInDraft = anns.find(a => a.id === first.id)
+    const secondInDraft = anns.find(a => a.id === second.id)
+    expect(firstInDraft?.read_order).toBe(1) // 前端 2 -> 后端 1
+    expect(secondInDraft?.read_order).toBe(0) // 前端 1 -> 后端 0
+  })
+
   it('resizeObject 在右下边界退化时向内收缩，避免生成越界坐标', () => {
     const store = useAnnotationStore()
     store.setImageBounds(200, 120)
@@ -166,7 +225,6 @@ describe('useAnnotationStore', () => {
     expect(store.assignNextReadOrder(second.id)).toBe(1)
     expect(store.assignNextReadOrder(first.id)).toBe(2)
     expect(store.assignNextReadOrder(third.id)).toBe(3)
-    expect(store.assignNextReadOrder(second.id)).toBe(1)
     expect(store.objects.value.map(obj => obj.read_order)).toEqual([2, 1, 3])
 
     store.clearReadOrder()
@@ -174,6 +232,38 @@ describe('useAnnotationStore', () => {
 
     store.endReadOrderSession()
     expect(store.readOrderSession.value).toEqual({ active: false, counter: 0 })
+  })
+
+  it('read_order 模式下再次点击已排序对象会取消并顺延后续序号', () => {
+    const store = useAnnotationStore()
+    store.setImageBounds(300, 200)
+
+    const first = store.addObject([10, 10, 60, 60], {
+      name: 'question_block',
+      namespace: 'k12',
+    })
+    const second = store.addObject([80, 10, 140, 60], {
+      name: 'answer_area',
+      namespace: 'k12',
+    })
+    const third = store.addObject([160, 10, 220, 60], {
+      name: 'formula',
+      namespace: 'k12',
+    })
+
+    store.startReadOrderSession()
+    store.assignNextReadOrder(first.id)
+    store.assignNextReadOrder(second.id)
+    store.assignNextReadOrder(third.id)
+    expect(store.objects.value.map(obj => obj.read_order)).toEqual([1, 2, 3])
+
+    expect(store.assignNextReadOrder(second.id)).toBe(2)
+    expect(store.objects.value.map(obj => obj.read_order)).toEqual([1, undefined, 2])
+    expect(store.readOrderSession.value).toEqual({ active: true, counter: 2 })
+
+    expect(store.assignNextReadOrder(second.id)).toBe(3)
+    expect(store.objects.value.map(obj => obj.read_order)).toEqual([1, 3, 2])
+    expect(store.readOrderSession.value).toEqual({ active: true, counter: 3 })
   })
 
   it('startReadOrderSession 返回是否清空了旧排序', () => {

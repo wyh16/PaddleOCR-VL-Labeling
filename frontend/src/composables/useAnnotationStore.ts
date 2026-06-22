@@ -360,7 +360,18 @@ export function useAnnotationStore() {
     const obj = objects.value.find(o => o.id === id)
     if (!obj) return null
     if ((obj.read_order ?? 0) > 0) {
-      return obj.read_order ?? null
+      const removedOrder = obj.read_order ?? null
+      if (removedOrder == null) return null
+
+      saveSnapshot()
+      delete obj.read_order
+      for (const other of objects.value) {
+        if ((other.read_order ?? 0) > removedOrder) {
+          other.read_order = (other.read_order ?? 0) - 1
+        }
+      }
+      readOrderSession.value.counter = Math.max(readOrderSession.value.counter - 1, 0)
+      return removedOrder
     }
     saveSnapshot()
     const nextOrder = readOrderSession.value.counter + 1
