@@ -355,7 +355,7 @@ CREATE TABLE IF NOT EXISTS annotation_objects (
     CONSTRAINT pk_annotation_objects PRIMARY KEY (id),
     CONSTRAINT uq_annotation_objects_revision_ann UNIQUE (revision_id, ann_id),
     CONSTRAINT fk_annotation_objects_revision_id_annotation_revisions FOREIGN KEY (revision_id) REFERENCES annotation_revisions (id) ON DELETE CASCADE,
-    CONSTRAINT ck_annotation_objects_read_order CHECK (read_order IS NULL OR read_order > 0),
+    CONSTRAINT ck_annotation_objects_read_order CHECK (read_order IS NULL OR read_order >= 0),
     CONSTRAINT ck_annotation_objects_status CHECK (status IN ('draft', 'active', 'deleted')),
     CONSTRAINT ck_annotation_objects_ann_id_not_blank CHECK (btrim(ann_id) <> ''),
     CONSTRAINT ck_annotation_objects_label_namespace_not_blank CHECK (btrim(label_namespace) <> ''),

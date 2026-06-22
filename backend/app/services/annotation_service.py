@@ -609,9 +609,9 @@ def _normalize_polygon_like(
 def _normalize_read_order(value: Any, index: int) -> int | None:
     if value is None:
         return None
-    if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
         raise InvalidAnnotationError(
-            f"k12_annotations[{index}].read_order 必须是正整数。"
+            f"k12_annotations[{index}].read_order 必须是非负整数。"
         )
     return value
 

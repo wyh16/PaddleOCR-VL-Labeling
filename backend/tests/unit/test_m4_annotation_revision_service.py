@@ -40,7 +40,7 @@ def sample_annotation_json(*, bbox: list[int] | None = None) -> dict[str, Any]:
                 "type": "question_block",
                 "label_namespace": "k12",
                 "geometry": {"bbox_xyxy": question_bbox},
-                "read_order": 1,
+                "read_order": 0,
                 "attributes": {"question_number": "1"},
                 "source_refs": [{"type": "human"}],
                 "status": "draft",
@@ -50,7 +50,7 @@ def sample_annotation_json(*, bbox: list[int] | None = None) -> dict[str, Any]:
                 "type": "option_block",
                 "label_namespace": "k12",
                 "geometry": {"bbox_xyxy": [20, 130, 80, 170]},
-                "read_order": 2,
+                "read_order": 1,
                 "attributes": {"option_label": "A"},
                 "source_refs": [],
                 "status": "draft",
@@ -100,7 +100,7 @@ def test_build_revision_indexes_derives_geometry_and_read_order() -> None:
         "bbox_xyxy": [10, 20, 110, 120],
         "quad": [[10, 20], [110, 20], [110, 120], [10, 120]],
         "polygon": [[10, 20], [110, 20], [110, 120], [10, 120]],
-        "read_order": 1,
+        "read_order": 0,
         "attributes_json": {"question_number": "1"},
         "source_refs_json": [{"type": "human"}],
         "status": "draft",
@@ -204,7 +204,7 @@ def test_build_revision_indexes_rejects_malformed_bbox(bbox: list[Any]) -> None:
         )
 
 
-@pytest.mark.parametrize("read_order", [0, -1, "1", True])
+@pytest.mark.parametrize("read_order", [-1, "1", True])
 def test_build_revision_indexes_rejects_invalid_read_order(read_order: Any) -> None:
     annotation_service = load_annotation_service()
     annotation_json = sample_annotation_json()
@@ -221,7 +221,7 @@ def test_build_revision_indexes_rejects_invalid_read_order(read_order: Any) -> N
 def test_build_revision_indexes_rejects_duplicate_read_order() -> None:
     annotation_service = load_annotation_service()
     annotation_json = sample_annotation_json()
-    annotation_json["k12_annotations"][1]["read_order"] = 1
+    annotation_json["k12_annotations"][1]["read_order"] = 0
 
     with pytest.raises(annotation_service.InvalidAnnotationError, match="read_order"):
         annotation_service.build_revision_indexes(
@@ -418,7 +418,7 @@ def test_create_revision_appends_json_asset_and_increments_revision_no(
 
     first_objects = repository.object_indexes[first.public_id]
     second_objects = repository.object_indexes[second.public_id]
-    assert first_objects[0]["read_order"] == 1
+    assert first_objects[0]["read_order"] == 0
     assert second_objects[0]["attributes_json"]["question_number"] == "2"
     assert (
         repository.get_latest_revision(object(), page_public_id="page_public_001")

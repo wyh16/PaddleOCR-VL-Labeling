@@ -209,7 +209,7 @@ curl "http://127.0.0.1:8000/api/v1/pages/page_xxx" `
 curl -X POST "http://127.0.0.1:8000/api/v1/pages/page_xxx/annotation/revisions" `
   -H "Authorization: Bearer $TOKEN" `
   -H "Content-Type: application/json" `
-  -d "{\"schema_version\":\"k12_annotation_v0.1\",\"page_id\":\"page_xxx\",\"k12_annotations\":[{\"id\":\"ann_001\",\"type\":\"question_block\",\"label_namespace\":\"k12\",\"geometry\":{\"bbox_xyxy\":[10,20,110,120]},\"read_order\":1,\"attributes\":{},\"source_refs\":[],\"status\":\"draft\"}],\"relations\":[]}"
+  -d "{\"schema_version\":\"k12_annotation_v0.1\",\"page_id\":\"page_xxx\",\"k12_annotations\":[{\"id\":\"ann_001\",\"type\":\"question_block\",\"label_namespace\":\"k12\",\"geometry\":{\"bbox_xyxy\":[10,20,110,120]},\"read_order\":0,\"attributes\":{},\"source_refs\":[],\"status\":\"draft\"}],\"relations\":[]}"
 ```
 
 如果页面已经存在 latest revision，保存请求应使用包装格式并带上 `base_revision_id`；否则后端返回 `409`，要求前端重新加载或合并：

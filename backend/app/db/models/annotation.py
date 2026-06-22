@@ -153,7 +153,7 @@ class AnnotationObject(TimestampMixin, Base):
             name="uq_annotation_objects_revision_ann",
         ),
         CheckConstraint(
-            "read_order IS NULL OR read_order > 0",
+            "read_order IS NULL OR read_order >= 0",
             name="ck_annotation_objects_read_order",
         ),
         CheckConstraint(
