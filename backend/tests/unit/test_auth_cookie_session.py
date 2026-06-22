@@ -31,14 +31,19 @@ def test_login_sets_http_only_auth_cookie(monkeypatch) -> None:
             "status": "active",
             "deleted_at": None,
             "is_system_admin": False,
+            "password_must_change": True,
             "last_login_at": None,
         },
     )()
     db = DummyDb(user=user)
     response = Response()
 
-    monkeypatch.setattr(auth_endpoint, "verify_password", lambda *_args, **_kwargs: True)
-    monkeypatch.setattr(auth_endpoint, "create_access_token", lambda **_kwargs: "cookie-token")
+    monkeypatch.setattr(
+        auth_endpoint, "verify_password", lambda *_args, **_kwargs: True
+    )
+    monkeypatch.setattr(
+        auth_endpoint, "create_access_token", lambda **_kwargs: "cookie-token"
+    )
     monkeypatch.setattr(
         auth_endpoint,
         "get_settings",
@@ -52,6 +57,7 @@ def test_login_sets_http_only_auth_cookie(monkeypatch) -> None:
     )
 
     assert result.user.username == "annotator"
+    assert result.user.password_must_change is True
     assert db.committed is True
     assert user.last_login_at is not None
     assert user.last_login_at.tzinfo == UTC
@@ -69,3 +75,83 @@ def test_logout_clears_auth_cookie() -> None:
     set_cookie = response.headers.get("set-cookie", "")
     assert "k12_access_token=" in set_cookie
     assert "Max-Age=0" in set_cookie or "expires=" in set_cookie.lower()
+
+
+def test_change_password_clears_first_login_flag(monkeypatch) -> None:
+    user = type(
+        "User",
+        (),
+        {
+            "id": 1,
+            "username": "annotator",
+            "display_name": "标注员",
+            "password_hash": "old-hash",
+            "status": "active",
+            "deleted_at": None,
+            "is_system_admin": False,
+            "password_must_change": True,
+        },
+    )()
+    db = DummyDb(user=user)
+
+    monkeypatch.setattr(
+        auth_endpoint, "verify_password", lambda *_args, **_kwargs: True
+    )
+    monkeypatch.setattr(
+        auth_endpoint, "hash_password", lambda password: f"hashed::{password}"
+    )
+
+    result = auth_endpoint.change_password(
+        payload=auth_endpoint.ChangePasswordRequest(
+            current_password="temp123",
+            new_password="newpass1",
+        ),
+        db=db,
+        current_user=user,
+    )
+
+    assert result.password_must_change is False
+    assert user.password_hash == "hashed::newpass1"
+    assert user.password_must_change is False
+    assert db.committed is True
+
+
+def test_change_password_rejects_wrong_current_password(monkeypatch) -> None:
+    user = type(
+        "User",
+        (),
+        {
+            "id": 1,
+            "username": "annotator",
+            "display_name": "标注员",
+            "password_hash": "old-hash",
+            "status": "active",
+            "deleted_at": None,
+            "is_system_admin": False,
+            "password_must_change": True,
+        },
+    )()
+    db = DummyDb(user=user)
+
+    monkeypatch.setattr(
+        auth_endpoint, "verify_password", lambda *_args, **_kwargs: False
+    )
+
+    try:
+        auth_endpoint.change_password(
+            payload=auth_endpoint.ChangePasswordRequest(
+                current_password="wrong-pass",
+                new_password="newpass1",
+            ),
+            db=db,
+            current_user=user,
+        )
+    except auth_endpoint.HTTPException as exc:
+        assert exc.status_code == 422
+        assert exc.detail == "当前密码不正确。"
+    else:
+        raise AssertionError("Expected HTTPException to be raised.")
+
+    assert user.password_hash == "old-hash"
+    assert user.password_must_change is True
+    assert db.committed is False

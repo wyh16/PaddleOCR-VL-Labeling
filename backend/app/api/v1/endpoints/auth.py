@@ -11,14 +11,30 @@ from app.core.security import (
     clear_auth_cookie,
     create_access_token,
     get_current_user,
+    hash_password,
     set_auth_cookie,
     verify_password,
 )
 from app.db.models import User
 from app.db.session import get_db_session
-from app.schemas.auth import AuthenticatedUser, LoginRequest, LoginResponse
+from app.schemas.auth import (
+    AuthenticatedUser,
+    ChangePasswordRequest,
+    LoginRequest,
+    LoginResponse,
+)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+
+def _authenticated_user_read(user: User) -> AuthenticatedUser:
+    return AuthenticatedUser(
+        id=user.id,
+        username=user.username,
+        display_name=user.display_name,
+        is_system_admin=user.is_system_admin,
+        password_must_change=user.password_must_change,
+    )
 
 
 @router.post("/login", response_model=LoginResponse, summary="用户登录")
@@ -50,12 +66,7 @@ def login(
     set_auth_cookie(response, access_token)
     return LoginResponse(
         expires_in=settings.jwt_expire_minutes * 60,
-        user=AuthenticatedUser(
-            id=user.id,
-            username=user.username,
-            display_name=user.display_name,
-            is_system_admin=user.is_system_admin,
-        ),
+        user=_authenticated_user_read(user),
     )
 
 
@@ -73,10 +84,34 @@ def logout(response: Response) -> Response:
 
 
 @router.get("/me", response_model=AuthenticatedUser, summary="获取当前用户")
-def read_current_user(current_user: User = Depends(get_current_user)) -> AuthenticatedUser:
-    return AuthenticatedUser(
-        id=current_user.id,
-        username=current_user.username,
-        display_name=current_user.display_name,
-        is_system_admin=current_user.is_system_admin,
-    )
+def read_current_user(
+    current_user: User = Depends(get_current_user),
+) -> AuthenticatedUser:
+    return _authenticated_user_read(current_user)
+
+
+@router.post(
+    "/change-password",
+    response_model=AuthenticatedUser,
+    summary="修改当前用户密码",
+)
+def change_password(
+    payload: ChangePasswordRequest,
+    db: Session = Depends(get_db_session),
+    current_user: User = Depends(get_current_user),
+) -> AuthenticatedUser:
+    if not verify_password(payload.current_password, current_user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="当前密码不正确。",
+        )
+    try:
+        current_user.password_hash = hash_password(payload.new_password)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+    current_user.password_must_change = False
+    db.commit()
+    return _authenticated_user_read(current_user)
