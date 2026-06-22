@@ -278,7 +278,13 @@ function focusImageRegion(bbox: [number, number, number, number]) {
   const height = Math.max(ymax - ymin, 1)
   const renderer = canvas.renderer
   const viewport = renderer.viewport.value
-  const nextScale = Math.min(Math.max(Math.min((viewport.w * 0.8) / width, (viewport.h * 0.8) / height), 0.05), 20)
+  const nextScale = Math.min(
+    Math.max(
+      Math.min((viewport.w * 0.8) / width, (viewport.h * 0.8) / height),
+      renderer.minScale.value,
+    ),
+    20,
+  )
   const centerX = (xmin + xmax) / 2
   const centerY = (ymin + ymax) / 2
 
@@ -287,6 +293,7 @@ function focusImageRegion(bbox: [number, number, number, number]) {
     x: viewport.w / 2 - centerX * nextScale,
     y: viewport.h / 2 - centerY * nextScale,
   }
+  renderer.constrainViewport()
   canvas.redraw()
   zoomLevel.value = renderer.zoomPercent.value
 }
@@ -600,6 +607,12 @@ function onKeyDown(e: KeyboardEvent) {
     if (e.key === 'v' || e.key === 'V') { setActiveTool('select'); e.preventDefault() }
     if ((e.key === 'w' || e.key === 'W') && canWrite.value) { setActiveTool('bbox'); e.preventDefault() }
     if ((e.key === 'r' || e.key === 'R') && canWrite.value) { setActiveTool('read_order'); e.preventDefault() }
+    if (e.key === 'f' || e.key === 'F') {
+      e.preventDefault()
+      if (e.shiftKey) onFitWidth()
+      else onFitPage()
+      return
+    }
     // 页面切换
     if (e.key === 'a' || e.key === 'A') { goToPrevPage(); e.preventDefault() }
     if (e.key === 'd' || e.key === 'D') { goToNextPage(); e.preventDefault() }
@@ -836,12 +849,14 @@ onUnmounted(() => {
           </button>
           <button
             class="w-8 h-8 flex items-center justify-center rounded-md text-text-secondary hover:bg-surface-muted hover:text-text transition-colors"
-            :aria-label="t('annotation.tools.fitWidth')" @click="onFitWidth">
+            :aria-label="t('annotation.tools.fitWidth')" :title="`${t('annotation.tools.fitWidth')} (Shift+F)`"
+            @click="onFitWidth">
             <Expand class="w-4 h-4" />
           </button>
           <button
             class="w-8 h-8 flex items-center justify-center rounded-md text-text-secondary hover:bg-surface-muted hover:text-text transition-colors"
-            :aria-label="t('annotation.tools.fitPage')" @click="onFitPage">
+            :aria-label="t('annotation.tools.fitPage')" :title="`${t('annotation.tools.fitPage')} (F)`"
+            @click="onFitPage">
             <Maximize class="w-4 h-4" />
           </button>
         </div>
@@ -986,7 +1001,7 @@ onUnmounted(() => {
               <div class="mb-2">
                 <label class="text-micro text-text-tertiary block mb-1">{{ t('annotation.properties.readOrder')
                 }}</label>
-                <BaseInput type="number" :model-value="selectedObject.read_order ?? ''" min="0" size="sm"
+                <BaseInput type="number" :model-value="selectedObject.read_order ?? ''" min="1" size="sm"
                   :invalid="Boolean(readOrderInputError)" @change="onReadOrderChange" />
                 <p v-if="readOrderInputError" class="mt-1 text-micro text-danger">{{ readOrderInputError }}</p>
               </div>
@@ -1006,7 +1021,7 @@ onUnmounted(() => {
               <!-- ID -->
               <div class="flex justify-between text-micro text-text-tertiary">
                 <span>{{ t('annotation.properties.id') }}: <span class="font-mono">{{ selectedObject.id.slice(0, 12)
-                }}</span></span>
+                    }}</span></span>
               </div>
             </template>
 
@@ -1029,7 +1044,7 @@ onUnmounted(() => {
               ]" @click="canvasRef?.store.select(obj.id); onObjectSelected(obj.id)">
                 <span class="w-2.5 h-2.5 rounded-sm shrink-0" :style="{ backgroundColor: obj.color }"></span>
                 <span class="flex-1 truncate">{{ getLabelText(obj.type, obj.label_namespace) }}</span>
-                <span class="text-micro text-text-muted">#{{ obj.read_order }}</span>
+                <span v-if="obj.read_order != null" class="text-micro text-text-muted">#{{ obj.read_order }}</span>
                 <button type="button"
                   class="ml-1 inline-flex h-6 w-6 items-center justify-center rounded hover:bg-surface-alt disabled:opacity-40 disabled:cursor-not-allowed"
                   :aria-label="t('annotation.tools.delete')" :title="t('annotation.tools.delete')"
@@ -1118,8 +1133,18 @@ onUnmounted(() => {
               </div>
               <div class="flex items-center gap-1.5">
                 <kbd
+                  class="font-mono text-text-tertiary bg-surface-alt border border-border rounded px-1 py-0.5">F</kbd>
+                <span class="text-text-secondary">{{ t('annotation.tools.fitPage') }}</span>
+              </div>
+              <div class="flex items-center gap-1.5">
+                <kbd
                   class="font-mono text-text-tertiary bg-surface-alt border border-border rounded px-1 py-0.5">Ctrl+S</kbd>
                 <span class="text-text-secondary">{{ t('annotation.shortcuts.save') }}</span>
+              </div>
+              <div class="flex items-center gap-1.5">
+                <kbd
+                  class="font-mono text-text-tertiary bg-surface-alt border border-border rounded px-1 py-0.5">Shift+F</kbd>
+                <span class="text-text-secondary">{{ t('annotation.tools.fitWidth') }}</span>
               </div>
               <div class="flex items-center gap-1.5">
                 <kbd class="font-mono text-text-tertiary bg-surface-alt border border-border rounded px-1 py-0.5">A /

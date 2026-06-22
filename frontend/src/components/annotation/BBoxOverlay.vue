@@ -74,77 +74,33 @@ function onHandleMouseDown(idx: number, e: MouseEvent) {
 <template>
   <g :class="selected ? 'opacity-100' : 'opacity-80'">
     <!-- bbox 矩形 -->
-    <rect
-      :x="x"
-      :y="y"
-      :width="w"
-      :height="h"
-      :fill="selected ? `${obj.color}10` : 'transparent'"
-      :stroke="obj.color"
-      :stroke-width="selected ? 2 : 1.5"
-      :class="bboxCursorClass"
-      @mousedown.left="onRectMouseDown"
-    />
+    <rect :x="x" :y="y" :width="w" :height="h" :fill="selected ? `${obj.color}10` : 'transparent'" :stroke="obj.color"
+      :stroke-width="selected ? 2 : 1.5" :class="bboxCursorClass" @mousedown.left="onRectMouseDown" />
 
     <!-- label badge -->
     <g :transform="`translate(${x}, ${y - 20})`">
-      <rect
-        :width="Math.max(labelName.length * 8 + 12, 40)"
-        height="18"
-        rx="3"
-        :fill="obj.color"
-      />
-      <text
-        x="6"
-        y="13"
-        fill="white"
-        font-size="11"
-        font-weight="500"
-        font-family="Inter, sans-serif"
-        pointer-events="none"
-      >
+      <rect :width="Math.max(labelName.length * 8 + 12, 40)" height="18" rx="3" :fill="obj.color" />
+      <text x="6" y="13" fill="white" font-size="11" font-weight="500" font-family="Inter, sans-serif"
+        pointer-events="none">
         {{ labelName }}
       </text>
     </g>
 
     <!-- read_order badge -->
-    <g v-if="obj.read_order && obj.read_order > 0" :transform="`translate(${x + w - 18}, ${y})`">
-      <rect
-        width="18"
-        height="18"
-        rx="9"
-        :fill="obj.color"
-        opacity="0.9"
-      />
-      <text
-        x="9"
-        y="13"
-        fill="white"
-        font-size="10"
-        font-weight="600"
-        text-anchor="middle"
-        font-family="Inter, sans-serif"
-        pointer-events="none"
-      >
+    <g v-if="obj.read_order != null && obj.read_order > 0" :transform="`translate(${x + w - 18}, ${y})`">
+      <rect width="18" height="18" rx="9" :fill="obj.color" opacity="0.9" />
+      <text x="9" y="13" fill="white" font-size="10" font-weight="600" text-anchor="middle"
+        font-family="Inter, sans-serif" pointer-events="none">
         {{ obj.read_order }}
       </text>
     </g>
 
     <!-- 选中时的控制点 -->
     <template v-if="selected && activeTool === 'select'">
-      <rect
-        v-for="handle in handles"
-        :key="handle.idx"
-        :x="handle.x - HANDLE_SIZE / 2"
-        :y="handle.y - HANDLE_SIZE / 2"
-        :width="HANDLE_SIZE"
-        :height="HANDLE_SIZE"
-        fill="white"
-        :stroke="obj.color"
-        stroke-width="1.5"
+      <rect v-for="handle in handles" :key="handle.idx" :x="handle.x - HANDLE_SIZE / 2" :y="handle.y - HANDLE_SIZE / 2"
+        :width="HANDLE_SIZE" :height="HANDLE_SIZE" fill="white" :stroke="obj.color" stroke-width="1.5"
         :style="{ cursor: panActive ? 'grab' : handle.cursor }"
-        @mousedown.left.stop="onHandleMouseDown(handle.idx, $event)"
-      />
+        @mousedown.left.stop="onHandleMouseDown(handle.idx, $event)" />
     </template>
   </g>
 </template>
