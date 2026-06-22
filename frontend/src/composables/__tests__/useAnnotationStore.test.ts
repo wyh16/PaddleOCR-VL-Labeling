@@ -26,7 +26,7 @@ describe('useAnnotationStore', () => {
               polygon: [[10, 20], [110, 20], [110, 120], [10, 120]],
               geometry_source: 'manual',
             },
-            read_order: 1,
+            read_order: 0,
             attributes: { question_number: '1' },
             source_refs: [{ type: 'human' }],
             status: 'draft',
@@ -191,6 +191,44 @@ describe('useAnnotationStore', () => {
     store.setReadOrder(first.id, 3)
     expect(store.startReadOrderSession()).toBe(true)
     expect(store.objects.value[0].read_order).toBeUndefined()
+  })
+
+  it('保存和加载时会在前端 1-based 与后端 0-based 之间转换', () => {
+    const store = useAnnotationStore()
+    store.loadFromRevision({
+      id: 'rev_public_002',
+      page_id: 'page_public_001',
+      revision_no: 4,
+      status: 'draft',
+      qc_status: 'pending',
+      data: {
+        schema_version: 'k12_annotation_v0.1',
+        page_id: 'page_public_001',
+        k12_annotations: [
+          {
+            id: 'ann_answer_001',
+            type: 'answer_area',
+            label_namespace: 'k12',
+            geometry: {
+              bbox_xyxy: [20, 30, 60, 80],
+            },
+            read_order: 1,
+            attributes: {},
+            source_refs: [],
+            status: 'draft',
+          },
+        ],
+        relations: [],
+      },
+    })
+
+    expect(store.objects.value[0].read_order).toBe(2)
+
+    const draft = store.toDraft('page_public_001')
+    const annotationJson = draft.data as {
+      k12_annotations: Array<{ read_order?: number }>
+    }
+    expect(annotationJson.k12_annotations[0].read_order).toBe(1)
   })
 
   it('updateObject 支持同步更新 label_namespace', () => {
