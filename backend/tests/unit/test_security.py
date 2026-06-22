@@ -21,6 +21,13 @@ def test_password_hash_verification() -> None:
     assert not security.verify_password("wrong-password", password_hash)
 
 
+def test_password_hash_verification_uses_trimmed_password() -> None:
+    password_hash = security.hash_password("  secret-password  ")
+
+    assert security.verify_password("secret-password", password_hash)
+    assert security.verify_password("  secret-password  ", password_hash)
+
+
 def test_access_token_round_trip(monkeypatch) -> None:
     monkeypatch.setattr(security, "get_jwt_secret_key", lambda: "unit-test-secret")
 

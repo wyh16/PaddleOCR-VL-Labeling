@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 import re
 from typing import Any, Protocol
 
 from sqlalchemy.orm import Session
 
+from app.core.password_policy import normalize_and_validate_password
 from app.core.security import get_project_capabilities, hash_password
 from app.db.models import MemberRoleBinding, ProjectMember, RoleRegistry, User
 from app.repositories.access import DEFAULT_ACCESS_REPOSITORY
@@ -31,6 +33,9 @@ class UserSummary:
     email: str | None
     status: str
     is_system_admin: bool
+    last_login_at: datetime | None
+    created_at: datetime | None
+    updated_at: datetime | None
 
 
 @dataclass(frozen=True)
@@ -62,6 +67,13 @@ class ProjectCapabilityProfile:
 
 class AccessRepositoryProtocol(Protocol):
     def list_users(self, db: object) -> list[User]: ...
+
+    def list_active_system_admins(
+        self,
+        db: object,
+        *,
+        lock_for_update: bool = False,
+    ) -> list[User]: ...
 
     def get_user(self, db: object, user_id: int) -> User | None: ...
 
@@ -245,22 +257,10 @@ def update_user(
     if user is None:
         raise AccessNotFoundError(f"用户不存在：{user_id}")
 
-    if is_system_admin is False and user.id == actor_id:
-        raise AccessValidationError(
-            "You cannot remove your own system administrator role."
-        )
-    if is_system_admin is False:
-        _ensure_not_last_active_system_admin(db=db, target_user=user, repository=repo)
-
-    before_json = {
-        "display_name": user.display_name,
-        "email": user.email,
-        "is_system_admin": user.is_system_admin,
-        "password_must_change": user.password_must_change,
-    }
-
-    if display_name is not None:
-        user.display_name = _normalize_display_name(display_name)
+    normalized_display_name = (
+        _normalize_display_name(display_name) if display_name is not None else None
+    )
+    normalized_email: str | None | object = UNSET
     if email is not UNSET:
         normalized_email = _normalize_email(email)
         if (
@@ -269,10 +269,36 @@ def update_user(
             and repo.get_user_by_email(db, normalized_email) is not None
         ):
             raise AccessValidationError(f"邮箱已存在：{normalized_email}")
-        user.email = normalized_email
+    password_hash_to_set: str | None = None
     if temporary_password is not None:
         _validate_temporary_password(temporary_password)
-        user.password_hash = hash_password(temporary_password)
+        password_hash_to_set = hash_password(temporary_password)
+
+    if is_system_admin is False and user.id == actor_id:
+        raise AccessValidationError(
+            "You cannot remove your own system administrator role."
+        )
+    if is_system_admin is False:
+        _ensure_not_last_active_system_admin(
+            db=db,
+            target_user=user,
+            repository=repo,
+            lock_for_update=True,
+        )
+
+    before_json = {
+        "display_name": user.display_name,
+        "email": user.email,
+        "is_system_admin": user.is_system_admin,
+        "password_must_change": user.password_must_change,
+    }
+
+    if normalized_display_name is not None:
+        user.display_name = normalized_display_name
+    if normalized_email is not UNSET:
+        user.email = normalized_email
+    if password_hash_to_set is not None:
+        user.password_hash = password_hash_to_set
         user.password_must_change = True
     if is_system_admin is not None:
         user.is_system_admin = is_system_admin
@@ -309,7 +335,12 @@ def disable_user(
         raise AccessNotFoundError(f"用户不存在：{user_id}")
     if user.id == actor_id:
         raise AccessValidationError("You cannot disable your own account.")
-    _ensure_not_last_active_system_admin(db=db, target_user=user, repository=repo)
+    _ensure_not_last_active_system_admin(
+        db=db,
+        target_user=user,
+        repository=repo,
+        lock_for_update=True,
+    )
     before_status = user.status
     user.status = "disabled"
     repo.write_audit_log(
@@ -358,16 +389,18 @@ def _ensure_not_last_active_system_admin(
     db: Session,
     target_user: User,
     repository: AccessRepositoryProtocol,
+    lock_for_update: bool = False,
 ) -> None:
     if not target_user.is_system_admin or target_user.status != "active":
         return
 
     remaining_active_admins = [
         user
-        for user in repository.list_users(db)
+        for user in repository.list_active_system_admins(
+            db,
+            lock_for_update=lock_for_update,
+        )
         if user.id != target_user.id
-        and user.is_system_admin
-        and user.status == "active"
     ]
     if remaining_active_admins:
         return
@@ -390,10 +423,15 @@ def list_project_members(
     repository: AccessRepositoryProtocol | None = None,
 ) -> list[ProjectMemberSummary]:
     repo = repository or DEFAULT_ACCESS_REPOSITORY
-    return [
-        _member_summary(db=db, member=member, repository=repo)
-        for member in repo.list_project_members(db, project_id=project_id)
-    ]
+    member_summaries: list[ProjectMemberSummary] = []
+    for member in repo.list_project_members(db, project_id=project_id):
+        try:
+            member_summaries.append(
+                _member_summary(db=db, member=member, repository=repo)
+            )
+        except AccessNotFoundError:
+            continue
+    return member_summaries
 
 
 def add_project_member(
@@ -634,6 +672,10 @@ def _set_project_member_status(
         member_id=member_id,
         repository=repo,
     )
+    if status == "disabled" and member.member_status != "active":
+        raise AccessValidationError("只能禁用 active 项目成员。")
+    if status == "removed" and member.member_status == "removed":
+        raise AccessValidationError("项目成员已被移除。")
     before_status = member.member_status
     repo.set_member_status(db, member=member, status=status)
     repo.write_audit_log(
@@ -718,8 +760,10 @@ def _normalize_email(email: str | None) -> str | None:
 
 
 def _validate_temporary_password(temporary_password: str) -> None:
-    if len(temporary_password) < 12:
-        raise AccessValidationError("临时密码长度不能少于 12 个字符。")
+    try:
+        normalize_and_validate_password(temporary_password)
+    except ValueError as exc:
+        raise AccessValidationError(str(exc)) from exc
 
 
 def _user_summary(user: User) -> UserSummary:
@@ -730,6 +774,9 @@ def _user_summary(user: User) -> UserSummary:
         email=user.email,
         status=user.status,
         is_system_admin=user.is_system_admin,
+        last_login_at=user.last_login_at,
+        created_at=user.created_at,
+        updated_at=user.updated_at,
     )
 
 

@@ -20,9 +20,13 @@ from app.services import access_service
 class RecordingDb:
     def __init__(self) -> None:
         self.commits = 0
+        self.rollbacks = 0
 
     def commit(self) -> None:
         self.commits += 1
+
+    def rollback(self) -> None:
+        self.rollbacks += 1
 
 
 class RecordingAccessRepository:
@@ -106,9 +110,23 @@ class RecordingAccessRepository:
         )
         self.bindings: list[MemberRoleBinding] = []
         self.audit_logs: list[dict[str, Any]] = []
+        self.last_lock_for_update = False
 
     def list_users(self, _db: object) -> list[User]:
         return list(self.users.values())
+
+    def list_active_system_admins(
+        self,
+        _db: object,
+        *,
+        lock_for_update: bool = False,
+    ) -> list[User]:
+        self.last_lock_for_update = lock_for_update
+        return [
+            user
+            for user in self.users.values()
+            if user.is_system_admin and user.status == "active"
+        ]
 
     def get_user(self, _db: object, user_id: int) -> User | None:
         return self.users.get(user_id)
@@ -487,7 +505,31 @@ def test_list_roles_returns_active_builtin_capabilities() -> None:
     ]
 
 
-def test_create_user_hashes_password_sets_first_login_flag_and_writes_safe_audit() -> None:
+def test_list_project_members_skips_orphan_member() -> None:
+    db = RecordingDb()
+    repository = RecordingAccessRepository()
+    orphan_member = ProjectMember(
+        id=8,
+        project_id=10,
+        user_id=404,
+        member_status="active",
+    )
+    repository.list_project_members = lambda _db, *, project_id: (  # type: ignore[method-assign]
+        [repository.member, orphan_member] if project_id == 10 else []
+    )
+
+    members = access_service.list_project_members(
+        db=db,  # type: ignore[arg-type]
+        project_id=10,
+        repository=repository,
+    )
+
+    assert [member.member_id for member in members] == [7]
+
+
+def test_create_user_hashes_password_sets_first_login_flag_and_writes_safe_audit() -> (
+    None
+):
     db = RecordingDb()
     repository = RecordingAccessRepository()
 
@@ -560,6 +602,82 @@ def test_create_user_rejects_duplicate_username_or_email(
 
     assert db.commits == 0
     assert repository.audit_logs == []
+
+
+def test_update_user_validates_before_mutating_user_state() -> None:
+    db = RecordingDb()
+    repository = RecordingAccessRepository()
+    target_user = repository.users[20]
+    target_user.email = "target@example.com"
+    repository.users[30] = User(
+        id=30,
+        username="other_user",
+        display_name="其他用户",
+        email="duplicate@example.com",
+        status="active",
+        is_system_admin=False,
+    )
+
+    with pytest.raises(access_service.AccessValidationError, match="邮箱已存在"):
+        access_service.update_user(
+            db=db,  # type: ignore[arg-type]
+            user_id=20,
+            actor_id=99,
+            display_name="新的显示名",
+            email="duplicate@example.com",
+            repository=repository,
+        )
+
+    assert target_user.display_name == "目标用户"
+    assert target_user.email == "target@example.com"
+    assert db.commits == 0
+    assert db.rollbacks == 0
+    assert repository.audit_logs == []
+
+
+def test_disable_user_checks_last_admin_with_lock() -> None:
+    db = RecordingDb()
+    repository = RecordingAccessRepository()
+    repository.users[20].is_system_admin = True
+    repository.users[99] = User(
+        id=99,
+        username="system_admin_2",
+        display_name="系统管理员二号",
+        status="active",
+        is_system_admin=True,
+    )
+
+    access_service.disable_user(
+        db=db,  # type: ignore[arg-type]
+        user_id=20,
+        actor_id=101,
+        repository=repository,
+    )
+
+    assert repository.last_lock_for_update is True
+
+
+def test_update_user_demotes_system_admin_with_lock() -> None:
+    db = RecordingDb()
+    repository = RecordingAccessRepository()
+    repository.users[99] = User(
+        id=99,
+        username="system_admin_2",
+        display_name="系统管理员二号",
+        status="active",
+        is_system_admin=True,
+    )
+    repository.users[20].is_system_admin = True
+
+    access_service.update_user(
+        db=db,  # type: ignore[arg-type]
+        user_id=20,
+        actor_id=101,
+        is_system_admin=False,
+        repository=repository,
+    )
+
+    assert repository.last_lock_for_update is True
 
 
 def test_grant_project_role_rejects_disabled_member() -> None:
@@ -701,3 +819,37 @@ def test_member_and_role_changes_write_audit_logs() -> None:
         assert item["resource_type"] in {"member_role_binding", "project_member"}
         assert item["resource_id"] is not None
     assert db.commits == 4
+
+
+def test_disable_project_member_rejects_non_active_member() -> None:
+    db = RecordingDb()
+    repository = RecordingAccessRepository()
+    repository.member.member_status = "disabled"
+
+    with pytest.raises(access_service.AccessValidationError, match="只能禁用 active"):
+        access_service.disable_project_member(
+            db=db,  # type: ignore[arg-type]
+            project_id=10,
+            member_id=7,
+            actor_id=99,
+            repository=repository,
+        )
+
+    assert db.commits == 0
+
+
+def test_remove_project_member_rejects_already_removed_member() -> None:
+    db = RecordingDb()
+    repository = RecordingAccessRepository()
+    repository.member.member_status = "removed"
+
+    with pytest.raises(access_service.AccessValidationError, match="已被移除"):
+        access_service.remove_project_member(
+            db=db,  # type: ignore[arg-type]
+            project_id=10,
+            member_id=7,
+            actor_id=99,
+            repository=repository,
+        )
+
+    assert db.commits == 0

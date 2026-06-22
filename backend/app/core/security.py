@@ -103,6 +103,7 @@ def verify_password(password: str, password_hash: str | None) -> bool:
     if not password_hash:
         return False
     try:
+        normalized_password = normalize_and_validate_password(password)
         algorithm, iterations_raw, salt, expected_raw = password_hash.split("$", 3)
         iterations = int(iterations_raw)
     except ValueError:
@@ -112,7 +113,7 @@ def verify_password(password: str, password_hash: str | None) -> bool:
 
     digest = hashlib.pbkdf2_hmac(
         "sha256",
-        password.encode("utf-8"),
+        normalized_password.encode("utf-8"),
         salt.encode("utf-8"),
         iterations,
     )
