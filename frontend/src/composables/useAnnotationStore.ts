@@ -178,6 +178,12 @@ function buildGeometry(
   }
 }
 
+function getAssignedReadOrders(items: AnnotationObject[]): number[] {
+  return items
+    .map(obj => obj.read_order)
+    .filter((order): order is number => typeof order === 'number' && order > 0)
+}
+
 export function useAnnotationStore() {
   const objects = ref<AnnotationObject[]>([])
   const selectedId = ref<string | null>(null)
@@ -277,7 +283,17 @@ export function useAnnotationStore() {
 
   function deleteObject(id: string) {
     saveSnapshot()
+    const removedObject = objects.value.find(o => o.id === id)
+    const removedOrder = removedObject?.read_order
     objects.value = objects.value.filter(o => o.id !== id)
+    if (removedOrder != null && removedOrder > 0) {
+      for (const obj of objects.value) {
+        if ((obj.read_order ?? 0) > removedOrder) {
+          obj.read_order = (obj.read_order ?? 0) - 1
+        }
+      }
+    }
+    readOrderSession.value.counter = Math.max(0, ...getAssignedReadOrders(objects.value))
     if (selectedId.value === id) selectedId.value = null
   }
 
@@ -347,12 +363,12 @@ export function useAnnotationStore() {
 
   function startReadOrderSession(): boolean {
     if (readOrderSession.value.active) return false
-    const changed = clearReadOrder()
+    const currentMaxOrder = Math.max(0, ...getAssignedReadOrders(objects.value))
     readOrderSession.value = {
       active: true,
-      counter: 0,
+      counter: currentMaxOrder,
     }
-    return changed
+    return false
   }
 
   function assignNextReadOrder(id: string): number | null {
@@ -370,13 +386,17 @@ export function useAnnotationStore() {
           other.read_order = (other.read_order ?? 0) - 1
         }
       }
-      readOrderSession.value.counter = Math.max(readOrderSession.value.counter - 1, 0)
+      readOrderSession.value.counter = Math.max(0, ...getAssignedReadOrders(objects.value))
       return removedOrder
     }
     saveSnapshot()
-    const nextOrder = readOrderSession.value.counter + 1
+    const usedOrders = new Set(getAssignedReadOrders(objects.value))
+    let nextOrder = 1
+    while (usedOrders.has(nextOrder)) {
+      nextOrder += 1
+    }
     obj.read_order = nextOrder
-    readOrderSession.value.counter = nextOrder
+    readOrderSession.value.counter = Math.max(0, ...getAssignedReadOrders(objects.value))
     return nextOrder
   }
 

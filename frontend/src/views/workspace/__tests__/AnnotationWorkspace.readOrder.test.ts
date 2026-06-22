@@ -73,7 +73,7 @@ function resetStoreMocks() {
     },
   ]
   selectedId.value = 'obj-1'
-  startReadOrderSessionMock = vi.fn(() => true)
+  startReadOrderSessionMock = vi.fn(() => false)
   setReadOrderMock = vi.fn((id: string, order: number) => {
     const target = storeObjects.value.find(obj => obj.id === id)
     if (target) target.read_order = order
@@ -364,7 +364,7 @@ describe('AnnotationWorkspace read_order', () => {
     })
   })
 
-  it('进入 read_order 会在清空旧排序后标记 dirty', async () => {
+  it('进入 read_order 会保留旧排序且不额外标记 dirty', async () => {
     const wrapper = mountWorkspace()
     await flushPromises()
 
@@ -373,12 +373,16 @@ describe('AnnotationWorkspace read_order', () => {
     await nextTick()
 
     expect(startReadOrderSessionMock).toHaveBeenCalled()
-    expect(saveStatusCalls).toContain('dirty')
+    expect(saveStatusCalls).not.toContain('dirty')
   })
 
   it('手动输入重复 read_order 时显示错误且不写入 store', async () => {
     const wrapper = mountWorkspace()
     await flushPromises()
+
+    const objectItems = wrapper.findAll('.cursor-pointer')
+    await objectItems[0].trigger('click')
+    await nextTick()
 
     const readOrderButton = wrapper.find('button[title="阅读顺序 (R)"]')
     await readOrderButton.trigger('click')
@@ -396,6 +400,10 @@ describe('AnnotationWorkspace read_order', () => {
   it('手动输入非正整数时显示错误', async () => {
     const wrapper = mountWorkspace()
     await flushPromises()
+
+    const objectItems = wrapper.findAll('.cursor-pointer')
+    await objectItems[0].trigger('click')
+    await nextTick()
 
     const readOrderButton = wrapper.find('button[title="阅读顺序 (R)"]')
     await readOrderButton.trigger('click')
