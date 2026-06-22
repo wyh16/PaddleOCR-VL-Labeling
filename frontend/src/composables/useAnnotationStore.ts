@@ -400,7 +400,7 @@ export function useAnnotationStore() {
         polygon: a.geometry?.polygon,
         geometry_source: (a.geometry?.geometry_source as 'manual' | 'auto_generated') || 'auto_generated',
       },
-      read_order: (a.read_order != null && a.read_order > 0) ? a.read_order : undefined,
+      read_order: (a.read_order != null && a.read_order >= 0) ? a.read_order + 1 : undefined,
       attributes: a.attributes || {},
       source_refs: a.source_refs || [],
       status: (a.status as 'draft' | 'active' | 'deleted') || 'active',
@@ -433,9 +433,9 @@ export function useAnnotationStore() {
           source_refs: o.source_refs,
           status: o.status,
         }
-        // 后端要求 read_order 为正整数或不传；0/负数/undefined/NaN 一律省略
+        // 前端交互按 1 开始展示，持久化到后端时转换为 0 开始。
         if (o.read_order != null && o.read_order > 0) {
-          ann.read_order = o.read_order
+          ann.read_order = o.read_order - 1
         }
         return ann
       }),
